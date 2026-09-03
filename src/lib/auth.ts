@@ -19,7 +19,13 @@ export const credentialsSchema = z.object({
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt", maxAge: 60 * 60 * 12 },
   pages: { signIn: "/signin" },
-  trustHost: true,
+  // Railway, and any other platform that terminates TLS upstream, puts the app
+  // behind a proxy, so the request host has to come from forwarded headers. That
+  // is opted into explicitly via AUTH_TRUST_HOST rather than trusting the Host
+  // header unconditionally in production, where a spoofed Host could otherwise
+  // poison generated callback URLs. AUTH_URL is read by Auth.js from the
+  // environment on its own and is never hardcoded here.
+  trustHost: process.env.AUTH_TRUST_HOST === "true" || process.env.NODE_ENV !== "production",
   providers: [
     Credentials({
       credentials: { email: {}, password: {} },
