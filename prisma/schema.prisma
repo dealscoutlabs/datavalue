@@ -1,0 +1,460 @@
+// DataValue — Prisma schema
+//
+// Design notes:
+// - No table in this schema is permitted to hold customer content. Scans are
+//   metadata-only: counts, byte sizes, MIME/extension categories, timestamps and
+//   aggregate statistics. See src/lib/connectors/types.ts.
+// - OAuth credentials are stored only in the *Enc fields, which hold AES-256-GCM
+//   ciphertext produced by src/lib/crypto.ts. Plaintext tokens never reach the DB,
+//   the client, or logs.
+// - ValuationSnapshot stores a frozen copy of every formula input so that later
+//   edits to ValuationRate can never rewrite a historical result.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String
+  isPlatformAdmin Boolean @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships   OrganizationMember[]
+  auditEvents   AuditEvent[]
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  website       String?
+  industry      String?
+  employeeRange String?
+  /// Demo organizations are seeded, never connected to a live provider, and are
+  /// rendered everywhere with a persistent "Demo data" badge.
+  isDemo        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members       OrganizationMember[]
+  connections   ProviderConnection[]
+  scanJobs      ScanJob[]
+  metrics       DataAssetMetric[]
+  questionnaire QuestionnaireResponse?
+  assessments   EligibilityAssessment[]
+  snapshots     ValuationSnapshot[]
+  offerRequests OfferRequest[]
+  auditEvents   AuditEvent[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrgRole      @default(OWNER)
+  createdAt      DateTime     @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------- connections
+
+enum ProviderKey {
+  DROPBOX
+  HUBSPOT
+  MICROSOFT
+  GOOGLE
+  SLACK
+  DEMO
+}
+
+enum ConnectionStatus {
+  PENDING
+  CONNECTED
+  SCANNING
+  SCANNED
+  PARTIAL
+  EXPIRED
+  SCOPE_LIMITED
+  ERROR
+  DISCONNECTED
+}
+
+model ProviderConnection {
+  id             String           @id @default(cuid())
+  organizationId String
+  provider       ProviderKey
+  status         ConnectionStatus @default(PENDING)
+
+  /// Human-readable account label (email / team name / portal id). Never a token.
+  accountLabel   String?
+  accountDomain  String?
+  externalId     String?
+
+  /// AES-256-GCM ciphertext. Never returned to the client.
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  accessTokenExpiresAt DateTime?
+
+  /// Space-delimited scopes actually granted by the provider.
+  grantedScopes  String?
+  /// Which scan path is available for this connection (e.g. MS admin vs delegated).
+  scanPath       String?
+
+  isDemo         Boolean          @default(false)
+  lastError      String?
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  scanJobs       ScanJob[]
+  metrics        DataAssetMetric?
+  assessments    EligibilityAssessment[]
+  snapshots      ValuationSnapshot[]
+
+  @@index([organizationId, provider])
+}
+
+/// Short-lived OAuth handshake state. Holds the PKCE verifier and CSRF state.
+/// Rows are deleted the moment the callback consumes them.
+model OAuthState {
+  id             String      @id @default(cuid())
+  state          String      @unique
+  codeVerifier   String?
+  provider       ProviderKey
+  organizationId String
+  userId         String
+  redirectTo     String?
+  expiresAt      DateTime
+  createdAt      DateTime    @default(now())
+
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------- scanning
+
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  PARTIAL
+  SUCCEEDED
+  FAILED
+  RATE_LIMITED
+  CANCELLED
+}
+
+model ScanJob {
+  id             String      @id @default(cuid())
+  organizationId String
+  connectionId   String
+  status         ScanStatus  @default(QUEUED)
+
+  /// 0-100. Providers that cannot report a total use a bounded heuristic and say so.
+  progressPct    Int         @default(0)
+  progressLabel  String?
+  pagesCompleted Int         @default(0)
+  itemsSeen      Int         @default(0)
+
+  /// Partial totals accumulated so far; shape matches NormalizedMetrics.
+  partialTotals  Json?
+  lastError      String?
+  errorCode      String?
+  resumable      Boolean     @default(true)
+  attempts       Int         @default(0)
+  nextAttemptAt  DateTime?
+
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection     ProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  checkpoints    ScanCheckpoint[]
+
+  @@index([organizationId])
+  @@index([connectionId, status])
+}
+
+/// One row per provider pagination stream (e.g. dropbox:files, hubspot:contacts).
+model ScanCheckpoint {
+  id          String   @id @default(cuid())
+  scanJobId   String
+  stream      String
+  /// Opaque provider cursor / page token / offset. Never contains content.
+  cursor      String?
+  /// Sampling parameters where a bounded estimate is used (sample size, seed, page).
+  samplingJson Json?
+  completed   Boolean  @default(false)
+  pageCount   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  scanJob     ScanJob  @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+
+  @@unique([scanJobId, stream])
+}
+
+enum ConfidenceTier {
+  EXACT
+  DERIVED
+  SAMPLED
+  SCOPE_LIMITED
+}
+
+enum DataUnitType {
+  UNSTRUCTURED_BYTES
+  STRUCTURED_RECORDS
+}
+
+/// The single normalized result of a scan. One row per connection (latest wins).
+model DataAssetMetric {
+  id             String         @id @default(cuid())
+  organizationId String
+  connectionId   String         @unique
+  provider       ProviderKey
+
+  unitType       DataUnitType
+  totalBytes     BigInt         @default(0)
+  totalRecords   BigInt         @default(0)
+  totalFiles     BigInt         @default(0)
+
+  /// { "documents": {"bytes": n, "count": n}, ... } — categories only, no names.
+  categoryMix    Json?
+  /// Per-object-type record counts and field completeness for structured sources.
+  recordBreakdown Json?
+
+  oldestItemAt   DateTime?
+  newestItemAt   DateTime?
+
+  confidence     ConfidenceTier
+  /// Plain-language description of how the number was obtained.
+  method         String
+  /// Honest caveats surfaced verbatim in the UI.
+  caveats        String[]       @default([])
+  /// True when the provider structurally prevents measuring part of the corpus.
+  scopeLimited   Boolean        @default(false)
+
+  isDemo         Boolean        @default(false)
+  measuredAt     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection     ProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------- questionnaire + eligibility
+
+enum ContactMethod {
+  EMAIL
+  PHONE
+  EITHER
+}
+
+enum TriState {
+  YES
+  NO
+  UNSURE
+}
+
+model QuestionnaireResponse {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+
+  industry              String
+  dataAgeRange          String
+  /// Did the business create the data, or does it lawfully control it by contract?
+  originCreatedOrControlled TriState
+  thirdPartyPii         TriState
+  ndaBoundMaterial      TriState
+  employeePersonalData   TriState
+  uniqueness            String   // UNIQUE_PROPRIETARY | SOMEWHAT | COMMONLY_AVAILABLE
+  alreadyLicensed       TriState
+  exclusivityPossible   TriState
+
+  /// Sensitive special categories. Any YES forces at least REVIEW_REQUIRED.
+  personalData          TriState
+  healthData            TriState
+  financialData         TriState
+  childrensData         TriState
+  biometricData         TriState
+  legalPrivilegeData    TriState
+  credentialData        TriState
+  exportControlledData  TriState
+
+  willingToAnonymize    TriState
+  contactMethod         ContactMethod @default(EMAIL)
+
+  submittedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum EligibilityStatus {
+  LIKELY_ELIGIBLE
+  REVIEW_REQUIRED
+  LIKELY_INELIGIBLE
+}
+
+model EligibilityAssessment {
+  id             String            @id @default(cuid())
+  organizationId String
+  /// Null for the organization-wide roll-up.
+  connectionId   String?
+
+  status         EligibilityStatus
+  engineVersion  String
+  /// Ordered, human-readable reasons. Rendered verbatim; never asserts legality.
+  reasons        Json
+  /// Full input snapshot so a later questionnaire edit cannot rewrite history.
+  inputSnapshot  Json
+  /// When false the UI must suppress all rate display for this scope.
+  ratesUnlocked  Boolean           @default(false)
+
+  createdAt      DateTime          @default(now())
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection     ProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}
+
+// ---------------------------------------------------------------- rate engine
+
+model ValuationFormulaVersion {
+  id          String   @id @default(cuid())
+  version     String   @unique
+  description String
+  /// Multiplier tables + spread, frozen per version.
+  parameters  Json
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  rates       ValuationRate[]
+  snapshots   ValuationSnapshot[]
+}
+
+/// Illustrative reference rates. Editable by a platform admin without code changes.
+model ValuationRate {
+  id            String       @id @default(cuid())
+  formulaVersionId String
+  provider      ProviderKey
+  unitType      DataUnitType
+  /// Base rate in USD per GB or per usable record, before multipliers.
+  baseRate      Float
+  /// Where this reference point came from. Displayed in the admin UI.
+  sourceNote    String
+  isActive      Boolean      @default(true)
+  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime     @default(now())
+
+  formulaVersion ValuationFormulaVersion @relation(fields: [formulaVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([formulaVersionId, provider, unitType])
+}
+
+/// A computed per-unit rate range, frozen at computation time.
+model ValuationSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String
+  connectionId   String
+  formulaVersionId String
+
+  unitType       DataUnitType
+  unitLabel      String       // "per GB" | "per usable record"
+  lowRate        Float
+  midRate        Float
+  highRate       Float
+
+  /// Every multiplier and its label, for the visible multiplier chain.
+  inputSnapshot  Json
+  createdAt      DateTime     @default(now())
+
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection     ProviderConnection      @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  formulaVersion ValuationFormulaVersion @relation(fields: [formulaVersionId], references: [id])
+
+  @@index([organizationId, createdAt])
+}
+
+// ---------------------------------------------------------------- leads + audit
+
+enum OfferRequestStatus {
+  NEW
+  CONTACTED
+  CLOSED
+}
+
+model OfferRequest {
+  id             String   @id @default(cuid())
+  organizationId String
+
+  contactName    String
+  contactRole    String
+  businessEmail  String
+  phone          String?
+  companyName    String
+  website        String?
+  industry       String
+  employeeRange  String
+
+  /// Frozen copies so the lead stands alone.
+  sourceSummary  Json
+  eligibilitySummary Json
+  questionnaireSnapshot Json
+
+  consentToContact Boolean
+  acknowledgedNotAnOffer Boolean
+
+  status         OfferRequestStatus @default(NEW)
+  notifiedAt     DateTime?
+  notifyError    String?
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model AuditEvent {
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String?
+  action         String
+  /// Redacted, structured detail. src/lib/logging.ts strips tokens and payloads.
+  detail         Json?
+  ip             String?
+  createdAt      DateTime @default(now())
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+}
