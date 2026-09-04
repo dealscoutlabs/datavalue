@@ -5,7 +5,7 @@ import { completeQuestionnaire, enterDemo, reseedDemo } from "./helpers";
  * Whole-product hygiene: no console errors, no failed requests, no dead internal
  * links, no leftover placeholder copy, and no credential leaking into the page.
  */
-const PUBLIC_PAGES = ["/", "/terms", "/privacy", "/security", "/contact", "/demo", "/signin", "/signup"];
+const PUBLIC_PAGES = ["/", "/data-payout", "/terms", "/privacy", "/security", "/contact", "/demo", "/signin", "/signup"];
 const APP_PAGES = ["/dashboard", "/sources", "/questionnaire", "/report", "/review", "/settings"];
 
 function collectProblems(page: Page) {

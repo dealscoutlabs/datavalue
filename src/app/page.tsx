@@ -95,6 +95,9 @@ export default async function HomePage() {
                 <Button asChild size="lg" variant="outline">
                   <Link href="/demo">View demo</Link>
                 </Button>
+                <Button asChild size="lg" variant="ghost">
+                  <Link href="/data-payout">Try the estimator</Link>
+                </Button>
               </div>
               <p className="mt-5 text-sm text-ink-subtle">
                 No dollar figure is shown before you complete the rights questionnaire, and none is
