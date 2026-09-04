@@ -492,19 +492,63 @@ framing assertions:
 
 ---
 
-## Deployment (Vercel)
+## Deployment
 
-1. Push the repository and import it in Vercel.
-2. Provision PostgreSQL and set `DATABASE_URL`.
-3. Set `AUTH_SECRET`, `ENCRYPTION_KEY`, `NEXT_PUBLIC_APP_URL` and `AUTH_URL` to
-   the deployed origin, plus whichever provider credentials you have.
-4. Build command `npm run build`; add `npm run db:deploy` as a release step.
-5. Seed once: `npm run db:seed` against the production database.
-6. **Add the deployed callback URL to every provider console** —
-   `https://<domain>/api/connect/<provider>/callback`. OAuth will fail until you do.
-7. Change the seeded demo and admin passwords, or set `DEMO_MODE_ENABLED=false`.
+**Live:** https://datavalue-production.up.railway.app
+**Repo:** https://github.com/dealscoutlabs/datavalue
 
----
+Deployed on Railway (project `datavalue`), with two services: the app, deployed
+from this GitHub repo on push to `main`, and a managed Postgres instance.
+
+### How the pieces fit
+
+| Concern | Where it runs | Why |
+|---|---|---|
+| `prisma generate` | build, via the `postinstall` hook | Build and pre-deploy run in different containers, so the generated client has to be baked into the image. |
+| `prisma migrate deploy` | **pre-deploy step** | Must not be in build (wrong container) or start (would race across replicas). |
+| `next start` | start | Binds to Railway's injected `PORT` with no `-p` flag. |
+| `/api/health` | healthcheck path | Returns 200 only when Postgres answers, so a container that cannot reach the database never takes traffic. |
+
+Two things worth knowing before you touch the deploy config:
+
+- **`railway redeploy` skips the pre-deploy step.** It reuses the previous
+  snapshot, so migrations do NOT run. Only a build-triggered deploy — a push to
+  `main` — runs pre-deploy. Verified by temporarily setting the pre-deploy
+  command to `exit 9`: `railway redeploy` still succeeded, while a pushed commit
+  failed the deployment, which is the behaviour you want.
+- **`builder` must be `RAILPACK` or `DOCKERFILE` in `railway.json`.** An invalid
+  value (e.g. `NIXPACKS`) makes Railway discard the *entire* config file
+  silently, so the pre-deploy command and healthcheck are dropped with no error.
+  The pre-deploy command and healthcheck path are also set directly on the
+  service, so they hold regardless of how the config file is parsed.
+
+### Required environment variables
+
+`DATABASE_URL` (referenced from the Postgres service), `AUTH_SECRET`,
+`ENCRYPTION_KEY`, `AUTH_TRUST_HOST=true`, and `AUTH_URL` /
+`NEXT_PUBLIC_APP_URL` (both set to `https://${{RAILWAY_PUBLIC_DOMAIN}}`).
+
+`AUTH_TRUST_HOST` is not optional behind Railway's TLS-terminating proxy, and
+the two URL variables build every OAuth redirect URI — if they are unset the app
+falls back to `http://localhost:3000` and all provider callbacks break.
+
+### Seeding
+
+The seed is not part of the deploy. Run it once, inside the container, so it
+resolves `postgres.railway.internal`:
+
+```bash
+railway ssh --service datavalue "npx tsx prisma/seed.ts"
+```
+
+It is idempotent, but it resets the demo organisation's questionnaire, so do not
+wire it into the deploy pipeline.
+
+### Redeploying elsewhere
+
+Nothing here is Railway-specific beyond `railway.json`. On any platform: run
+`prisma migrate deploy` as a release/pre-deploy step, serve with `npm run start`,
+point the healthcheck at `/api/health`, and set the variables above.
 
 ## File map
 
