@@ -49,6 +49,13 @@ export const SEED_RATES: SeedRate[] = [
       "Matches the Microsoft 365 reference for the same reason: a Google Workspace measurement blends Drive with Gmail, and Google-native documents do not report ordinary file sizes at all. Reference point only.",
   },
   {
+    provider: "GOOGLE_ADMIN",
+    unitType: "UNSTRUCTURED_BYTES",
+    baseRate: 6.0,
+    sourceNote:
+      "Matches the Microsoft 365 reference, for the same reason: a domain-wide Workspace measurement blends Drive files with Gmail storage, and mailbox volume is dominated by attachments and duplicated thread quoting. It is not set higher than the per-user Google reference merely because the measurement is more precise — precision of measurement is not evidence of market value. Reference point only.",
+  },
+  {
     provider: "SLACK",
     unitType: "UNSTRUCTURED_BYTES",
     baseRate: 5.0,

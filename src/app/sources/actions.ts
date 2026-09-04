@@ -9,7 +9,14 @@ import { startScan } from "@/lib/scan/runner";
 import { DEMO_ACCOUNT_LABELS } from "@/lib/connectors/demo";
 import type { ProviderKey } from "@/generated/prisma";
 
-const providerSchema = z.enum(["DROPBOX", "HUBSPOT", "MICROSOFT", "GOOGLE", "SLACK"]);
+const providerSchema = z.enum([
+  "DROPBOX",
+  "HUBSPOT",
+  "MICROSOFT",
+  "GOOGLE",
+  "GOOGLE_ADMIN",
+  "SLACK",
+]);
 
 /**
  * Adds a DEMO source. This is not an OAuth flow and does not pretend to be one:

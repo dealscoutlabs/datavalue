@@ -213,7 +213,51 @@ screen fail for a non-admin user.
 
 See **Google: demo-only, not launchable as designed** below.
 
-### 5. Slack — files only
+### 5. Google Workspace (Admin) — shippable
+
+The other Google connector, and the one to reach for. It measures the whole
+domain and is **not** caught by the restricted-scope regime that makes the
+per-user connector demo-only.
+
+1. https://console.cloud.google.com/apis/credentials -> OAuth client ID -> Web
+   application
+2. Authorised redirect URI:
+   `http://localhost:3000/api/connect/google_admin/callback`
+3. Enable the **Admin SDK API**
+4. Scope: `https://www.googleapis.com/auth/admin.reports.usage.readonly`
+5. Fill `GOOGLE_ADMIN_CLIENT_ID` / `GOOGLE_ADMIN_CLIENT_SECRET` (falls back to
+   `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, so one Cloud project can serve both)
+
+| Scope | Why |
+|---|---|
+| `admin.reports.usage.readonly` | Read domain usage reports: storage per account, split by Drive and Gmail. A reporting permission — it grants access to no file or message. |
+| `openid email` | Label the connection with the administrator's email and domain. |
+
+**Why this one can ship and the per-user one cannot.** `admin.reports.usage.readonly`
+is a *sensitive* scope, not a *restricted* one. Sensitive scopes require OAuth
+verification and a written justification; restricted scopes additionally require
+an annual third-party security assessment (CASA) and carry prohibited-use-case
+risk. That is the difference between a review and a recurring audit. Confirm the
+classification for yourself on the OAuth consent screen in the Cloud Console,
+which labels each scope as it is added.
+
+**What it measures.** `accounts:drive_used_quota_in_mb` and
+`accounts:gmail_used_quota_in_mb` are *stock* metrics — exact totals, reported
+separately by Google. This removes the per-user connector's worst caveat, where
+`storageQuota.usage` spans Drive + Gmail + Photos and cannot be split.
+
+**What it deliberately does not measure.** The `drive:num_*` parameters are
+*flow* metrics: items created or added during the report window, not items held.
+Summing them into a file count would invent a total, so this connector reports no
+file count at all and says so in its caveats.
+
+**Two operational notes.** The authorizing user must be a Workspace super
+administrator. And usage reports are published with a delay, so the scan walks
+back from two days ago until it finds a date with data, rather than assuming a
+fixed offset; if nothing is available within ten days it returns `SCOPE_LIMITED`
+rather than reporting an empty domain.
+
+### 6. Slack — files only
 
 1. https://api.slack.com/apps → **Create New App**
 2. **OAuth & Permissions** → Redirect URL:

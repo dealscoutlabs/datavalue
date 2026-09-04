@@ -74,6 +74,7 @@ export type EligibilityResult = {
 const COMMUNICATIONS_PROVIDERS: ReadonlySet<ProviderKey> = new Set<ProviderKey>([
   "MICROSOFT", // Exchange Online mailboxes are scanned alongside OneDrive
   "GOOGLE", // Gmail is scanned alongside Drive
+  "GOOGLE_ADMIN", // domain-wide Gmail storage is part of the measured volume
   "SLACK", // files are shared inside conversations with counterparties
 ]);
 

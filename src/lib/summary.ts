@@ -96,6 +96,7 @@ const PROVIDER_LABELS: Record<ProviderKey, string> = {
   HUBSPOT: "HubSpot CRM",
   MICROSOFT: "Microsoft 365",
   GOOGLE: "Google Workspace",
+  GOOGLE_ADMIN: "Google Workspace (Admin)",
   SLACK: "Slack",
   DEMO: "Demo source",
 };

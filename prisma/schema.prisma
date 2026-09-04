@@ -84,7 +84,10 @@ enum ProviderKey {
   DROPBOX
   HUBSPOT
   MICROSOFT
+  /// Per-user Drive + Gmail. Restricted scopes, so demo-only. See README.
   GOOGLE
+  /// Domain-wide Admin SDK Reports. Sensitive scope, not restricted — no CASA.
+  GOOGLE_ADMIN
   SLACK
   DEMO
 }

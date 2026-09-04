@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
   completeQuestionnaire,
+  connectedSourceCount,
   reseedDemo,
-  measuredVolume,
   visibleDollarFigures,
   waitForScansToSettle,
 } from "./helpers";
@@ -47,8 +47,7 @@ test("full demo journey", async ({ page }) => {
   });
   await expect(connectedSources.getByRole("heading", { name: "Slack", exact: true })).toHaveCount(0);
 
-  // Measured volume with Slack removed. Adding the source back must raise it.
-  const volumeWithoutSlack = await measuredVolume(page);
+  const sourcesWithoutSlack = await connectedSourceCount(page);
 
   // --- add the demo source back -------------------------------------------
   await page.goto("/sources");
@@ -64,8 +63,15 @@ test("full demo journey", async ({ page }) => {
   await expect(connectedSources.getByRole("heading", { name: "Slack", exact: true })).toBeVisible();
   await expect(page.getByText(/File volume only/i).first()).toBeVisible();
 
-  const volumeWithSlack = await measuredVolume(page);
-  expect(volumeWithSlack).toBeGreaterThan(volumeWithoutSlack);
+  // The org total is displayed to one decimal of TB, so a 27 GB source does not
+  // move it. Assert on what actually changed: the source is back in the list and
+  // its own measured volume is showing.
+  expect(await connectedSourceCount(page)).toBe(sourcesWithoutSlack + 1);
+  const rescannedSlackCard = page
+    .locator("div.rounded-lg")
+    .filter({ has: page.getByRole("heading", { name: "Slack", exact: true }) })
+    .last();
+  await expect(rescannedSlackCard).toContainText("27.3 GB");
 
   // --- questionnaire -------------------------------------------------------
   await completeQuestionnaire(page);

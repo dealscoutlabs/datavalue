@@ -16,7 +16,14 @@ import type { ConnectorAdapter, NormalizedMetrics } from "./types";
 
 const GB = 1024 ** 3;
 
-export const DEMO_PROVIDERS: ProviderKey[] = ["DROPBOX", "HUBSPOT", "MICROSOFT", "SLACK", "GOOGLE"];
+export const DEMO_PROVIDERS: ProviderKey[] = [
+  "DROPBOX",
+  "HUBSPOT",
+  "MICROSOFT",
+  "GOOGLE_ADMIN",
+  "SLACK",
+  "GOOGLE",
+];
 
 export const DEMO_ACCOUNT_LABELS: Record<string, string> = {
   DROPBOX: "ops@northwind-supply.example",
@@ -24,6 +31,7 @@ export const DEMO_ACCOUNT_LABELS: Record<string, string> = {
   MICROSOFT: "j.okafor@northwind-supply.example",
   SLACK: "Northwind Supply",
   GOOGLE: "j.okafor@northwind-supply.example",
+  GOOGLE_ADMIN: "northwind-supply.example (admin: it@northwind-supply.example)",
 };
 
 /**
@@ -137,6 +145,35 @@ export function demoMetricsFor(provider: ProviderKey): NormalizedMetrics {
           "Workspace context: 214 public channels, 78 active members. These are counts only and contribute no measured volume.",
         ],
         scopeLimited: true,
+      };
+
+    case "GOOGLE_ADMIN":
+      // Domain-wide, so materially larger than the single-user GOOGLE fixture.
+      // No file count: the Admin SDK reports storage but not items held.
+      return {
+        unitType: "UNSTRUCTURED_BYTES",
+        totalBytes: Math.round(1806.4 * GB),
+        totalRecords: 0,
+        totalFiles: 0,
+        categoryMix: {
+          documents: { bytes: Math.round(1114.2 * GB), count: 0 },
+          email: { bytes: Math.round(601.7 * GB), count: 0 },
+          images: { bytes: Math.round(90.5 * GB), count: 0 },
+        },
+        recordBreakdown: [],
+        oldestItemAt: null,
+        newestItemAt: "2026-09-01T00:00:00.000Z",
+        confidence: "EXACT",
+        method:
+          "Domain-wide storage from the Google Workspace Admin SDK usage reports, summed across every account, with Drive and Gmail reported separately by Google rather than derived.",
+        caveats: [
+          "Measured across 78 Workspace accounts from the usage report dated 2026-09-01.",
+          "Drive holds 1114.2 GB and Gmail holds 601.7 GB. Google reports these separately, so neither figure is derived by subtraction.",
+          "The Admin SDK usage reports expose storage totals but not a count of items held, so no file or message count is reported for this source. The item figures Google does publish count activity during the report window, not the size of the corpus.",
+          "Usage reports are published with a delay, so this reflects the domain as of 2026-09-01 rather than this moment.",
+          "Domain storage allocation totals 7800.0 GB across all accounts.",
+        ],
+        scopeLimited: false,
       };
 
     case "GOOGLE":

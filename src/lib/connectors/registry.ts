@@ -12,6 +12,7 @@ import { dropboxAdapter } from "./dropbox";
 import { hubspotAdapter } from "./hubspot";
 import { microsoftAdapter } from "./microsoft";
 import { googleAdapter } from "./google";
+import { googleAdminAdapter } from "./google-admin";
 import { slackAdapter } from "./slack";
 import { demoAdapter } from "./demo";
 
@@ -20,12 +21,24 @@ export const ADAPTERS: Record<ProviderKey, ConnectorAdapter> = {
   HUBSPOT: hubspotAdapter,
   MICROSOFT: microsoftAdapter,
   GOOGLE: googleAdapter,
+  GOOGLE_ADMIN: googleAdminAdapter,
   SLACK: slackAdapter,
   DEMO: demoAdapter,
 };
 
 /** Display order for the catalog. Mirrors implementation maturity. */
-export const CATALOG_ORDER: ProviderKey[] = ["DROPBOX", "HUBSPOT", "MICROSOFT", "SLACK", "GOOGLE"];
+/**
+ * Display order mirrors implementation maturity. GOOGLE_ADMIN sits above GOOGLE
+ * because it clears Google's restricted-scope regime and GOOGLE does not.
+ */
+export const CATALOG_ORDER: ProviderKey[] = [
+  "DROPBOX",
+  "HUBSPOT",
+  "MICROSOFT",
+  "GOOGLE_ADMIN",
+  "SLACK",
+  "GOOGLE",
+];
 
 export function getAdapter(provider: ProviderKey): ConnectorAdapter {
   const adapter = ADAPTERS[provider];

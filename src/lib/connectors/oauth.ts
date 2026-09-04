@@ -23,6 +23,7 @@ const PKCE_PROVIDERS: ReadonlySet<ProviderKey> = new Set<ProviderKey>([
   "DROPBOX",
   "MICROSOFT",
   "GOOGLE",
+  "GOOGLE_ADMIN",
 ]);
 
 export function appUrl(): string {
@@ -93,6 +94,13 @@ export async function purgeExpiredStates() {
 
 export function parseProviderParam(raw: string): ProviderKey | null {
   const key = raw.toUpperCase();
-  const allowed: ProviderKey[] = ["DROPBOX", "HUBSPOT", "MICROSOFT", "GOOGLE", "SLACK"];
+  const allowed: ProviderKey[] = [
+    "DROPBOX",
+    "HUBSPOT",
+    "MICROSOFT",
+    "GOOGLE",
+    "GOOGLE_ADMIN",
+    "SLACK",
+  ];
   return allowed.includes(key as ProviderKey) ? (key as ProviderKey) : null;
 }

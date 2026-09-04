@@ -68,16 +68,12 @@ export async function completeQuestionnaire(page: Page, overrides: Record<string
   await page.waitForURL("**/report");
 }
 
-/** The dashboard's total measured volume, in bytes, parsed from the summary. */
-export async function measuredVolume(page: Page): Promise<number> {
-  const text = await page
-    .locator("dd")
-    .filter({ hasText: /^[\d.,]+ (B|KB|MB|GB|TB)$/ })
-    .first()
-    .innerText();
-  const [, value, unit] = text.match(/^([\d.,]+)\s+(B|KB|MB|GB|TB)$/) ?? [];
-  const factor = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[unit] ?? 0;
-  return Number(value.replace(/,/g, "")) * factor;
+/** How many source cards are in the "Connected sources" section. */
+export async function connectedSourceCount(page: Page): Promise<number> {
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", { name: /^connected sources$/i }),
+  });
+  return section.getByRole("heading", { level: 3 }).count();
 }
 
 /** Every visible currency figure on the page. */
