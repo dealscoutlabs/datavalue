@@ -24,7 +24,17 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@datavalue.example";
-const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin-inventory-2026";
+
+/**
+ * The platform admin can edit reference rates and read every lead's business
+ * contact details, so it must never be created with a password that is written
+ * down in this repository. Outside development the password has to be supplied
+ * explicitly; if it is not, the admin account is skipped rather than created
+ * with a guessable one.
+ */
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? null;
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const DEV_ADMIN_PASSWORD = "admin-inventory-2026";
 
 async function main() {
   // ---------------------------------------------------------------- formula
@@ -56,17 +66,30 @@ async function main() {
   console.log(`${SEED_RATES.length} reference rates seeded`);
 
   // ---------------------------------------------------------------- admin
-  await prisma.user.upsert({
-    where: { email: ADMIN_EMAIL },
-    create: {
-      email: ADMIN_EMAIL,
-      name: "Platform admin",
-      passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 12),
-      isPlatformAdmin: true,
-    },
-    update: { isPlatformAdmin: true },
-  });
-  console.log(`admin: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+  const adminPassword = ADMIN_PASSWORD ?? (IS_PRODUCTION ? null : DEV_ADMIN_PASSWORD);
+  if (!adminPassword) {
+    console.log(
+      "admin: SKIPPED — set SEED_ADMIN_PASSWORD to create a platform admin in production."
+    );
+  } else {
+    await prisma.user.upsert({
+      where: { email: ADMIN_EMAIL },
+      create: {
+        email: ADMIN_EMAIL,
+        name: "Platform admin",
+        passwordHash: await bcrypt.hash(adminPassword, 12),
+        isPlatformAdmin: true,
+      },
+      // The password is reset on every seed so a rotation cannot be silently
+      // undone by a later re-seed leaving an old hash in place.
+      update: { isPlatformAdmin: true, passwordHash: await bcrypt.hash(adminPassword, 12) },
+    });
+    console.log(
+      ADMIN_PASSWORD
+        ? `admin: ${ADMIN_EMAIL} (password from SEED_ADMIN_PASSWORD)`
+        : `admin: ${ADMIN_EMAIL} / ${adminPassword}  [development default]`
+    );
+  }
 
   // ---------------------------------------------------------------- demo org
   const demoUser = await prisma.user.upsert({

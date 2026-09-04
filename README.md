@@ -74,10 +74,16 @@ undecryptable** — connections would have to be re-authorized.
 | Account | Email | Password |
 |---|---|---|
 | Demo organisation | `demo@datavalue.example` | `demo-inventory-2026` |
-| Platform admin | `admin@datavalue.example` | `admin-inventory-2026` |
+| Platform admin | `admin@datavalue.example` | development only — see below |
 
-Override the admin credentials with `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`.
-Change them before any deployment that is reachable from the internet.
+The demo account is public on purpose: it reaches a fixed sample dataset, and a
+demo organisation is refused by the OAuth start route, so it cannot connect a
+real provider account.
+
+The **platform admin is different** — it can edit reference rates and read every
+lead's business contact details. Outside development the seed will not create it
+unless `SEED_ADMIN_PASSWORD` is set, and it is skipped with a warning instead.
+Never deploy with a password that appears in this repository.
 
 ---
 
