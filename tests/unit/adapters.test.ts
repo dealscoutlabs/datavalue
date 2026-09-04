@@ -141,6 +141,84 @@ describe("dropbox adapter", () => {
     expect(metrics.caveats.join(" ")).toMatch(/version history|deleted-file retention/i);
   });
 
+  it("exchanges the code as a confidential client when Dropbox accepts it", async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/oauth2/token")) {
+          bodies.push(String(init?.body ?? ""));
+          return new Response(
+            JSON.stringify({ access_token: "tok", refresh_token: "ref", expires_in: 14400 }),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify({ account_id: "a1", email: "x@y.com" }), { status: 200 });
+      })
+    );
+
+    const tokens = await dropboxAdapter.exchangeCode({
+      code: "c",
+      codeVerifier: "v",
+      redirectUri: "http://localhost:3000/cb",
+    });
+    expect(tokens.accessToken).toBe("tok");
+    expect(tokens.refreshToken).toBe("ref");
+    // One attempt only: the first form was accepted.
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain("client_secret=");
+    expect(bodies[0]).toContain("code_verifier=v");
+  });
+
+  it("falls back to the public-client PKCE form if Dropbox rejects the secret", async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/oauth2/token")) {
+          const body = String(init?.body ?? "");
+          bodies.push(body);
+          if (body.includes("client_secret=")) {
+            return new Response(JSON.stringify({ error: "invalid_request" }), { status: 400 });
+          }
+          return new Response(
+            JSON.stringify({ access_token: "tok2", refresh_token: "ref2", expires_in: 14400 }),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify({ account_id: "a1", email: "x@y.com" }), { status: 200 });
+      })
+    );
+
+    const tokens = await dropboxAdapter.exchangeCode({
+      code: "c",
+      codeVerifier: "v",
+      redirectUri: "http://localhost:3000/cb",
+    });
+    expect(tokens.accessToken).toBe("tok2");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).not.toContain("client_secret=");
+    expect(bodies[1]).toContain("code_verifier=v");
+  });
+
+  it("does not retry a non-400 failure", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+      })
+    );
+    await expect(
+      dropboxAdapter.exchangeCode({ code: "c", codeVerifier: "v", redirectUri: "http://x/cb" })
+    ).rejects.toThrow();
+    // maxAttempts is 1 on the exchange, and a 5xx must not trigger the PKCE fallback.
+    expect(calls).toBe(1);
+  });
+
   it("never calls a content or download endpoint", async () => {
     const calls: string[] = [];
     vi.stubGlobal(

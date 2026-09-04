@@ -131,22 +131,54 @@ export const dropboxAdapter: ConnectorAdapter = {
   },
 
   async exchangeCode({ code, codeVerifier, redirectUri }) {
-    const raw = await providerJson(TOKEN_URL, {
-      provider: "DROPBOX",
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formEncode({
+    // Dropbox's OAuth guide says to send the code_verifier "instead of" the
+    // client_secret, but does not say whether a confidential client that sends
+    // both is rejected. Rather than guess, try the standard confidential-client
+    // exchange first and fall back once to the public-client PKCE form. A first
+    // run that failed here would surface as an opaque "authorization failed",
+    // which is the worst possible time to discover the ambiguity.
+    const attempts: Record<string, string | undefined>[] = [
+      {
         code,
         grant_type: "authorization_code",
         redirect_uri: redirectUri,
         client_id: clientId(),
         client_secret: clientSecret(),
         code_verifier: codeVerifier,
-      }),
-    });
-    const parsed = tokenResponseSchema.parse(raw);
-    const account = await getAccount(parsed.access_token);
-    return toTokens(parsed, account);
+      },
+    ];
+    if (codeVerifier) {
+      attempts.push({
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        client_id: clientId(),
+        code_verifier: codeVerifier,
+      });
+    }
+
+    let lastError: unknown;
+    for (const body of attempts) {
+      try {
+        const raw = await providerJson(TOKEN_URL, {
+          provider: "DROPBOX",
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: formEncode(body),
+          maxAttempts: 1,
+        });
+        const parsed = tokenResponseSchema.parse(raw);
+        const account = await getAccount(parsed.access_token);
+        return toTokens(parsed, account);
+      } catch (err) {
+        // Only a rejection of the credential shape is worth retrying; anything
+        // else (network, 5xx, an already-used code) would fail identically.
+        lastError = err;
+        const status = err instanceof ProviderError ? err.status : undefined;
+        if (status !== 400) throw err;
+      }
+    }
+    throw lastError;
   },
 
   async refreshToken({ refreshToken }) {
