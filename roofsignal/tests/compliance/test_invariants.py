@@ -51,8 +51,8 @@ def build(s):
         "pewc_expired": [pewc(captured=NOW - timedelta(days=400))],
         "pewc_bad_sha": [pewc(sha="f" * 64)],
     }[c]
-    p.history.attempts = [(NUMBER, NOW - timedelta(hours=1))] * s["attempts"]
     now = NOW + timedelta(minutes=s["minutes"])
+    p.history.attempts = [(NUMBER, now - timedelta(hours=1))] * s["attempts"]
     r = req(purpose=s["purpose"], kind=s["kind"])
     return p, r, now
 

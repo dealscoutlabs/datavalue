@@ -30,9 +30,16 @@ class Settings(BaseSettings):
     approved_providers: list[str] = Field(default_factory=list)
     imagery_provider: str = "mock"
     telephony_provider: str = "mock"
+    line_type_provider: str = "mock"
+    # Outbound caller ID used for agent calls (must be a number we own once telephony is live).
+    outbound_caller_id: str = "+15555550100"
 
-    # Token the admin web app uses to call the API until Phase 2 role-based auth lands.
-    admin_api_token: str | None = None
+    # Session lifetime for logged-in staff.
+    session_hours: int = 12
+
+    # Shared secret proving a request came from our own Next.js server (never sent to browsers). Staff requests
+    # additionally carry a per-user session token.
+    service_api_token: str | None = None
 
     landing_base_url: str = "http://localhost:3000"
 

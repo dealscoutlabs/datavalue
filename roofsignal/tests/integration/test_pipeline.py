@@ -218,26 +218,54 @@ def test_campaign_and_print_csv(session, loaded):
 
 @pytest.fixture
 def client(session, loaded, monkeypatch):
-    monkeypatch.setenv("ADMIN_API_TOKEN", "test-token")
+    monkeypatch.setenv("SERVICE_API_TOKEN", "svc-token")
     get_settings.cache_clear()
     run_scoring(session, loaded, load_scoring(), "roofing", AS_OF)
+    from roofsignal.core.auth import create_user
+
+    create_user(session, "boss@example.com", "Boss", "admin", "correct horse battery")
+    create_user(session, "agent@example.com", "Agent", "agent", "correct horse battery")
     session.commit()
     from roofsignal.api.main import app
 
-    return TestClient(app)
+    c = TestClient(app)
+    tok = c.post("/auth/login", json={"email": "boss@example.com", "password": "correct horse battery"},
+                 headers={"X-Service-Token": "svc-token"}).json()["token"]
+    AUTH.clear()
+    AUTH.update({"X-Service-Token": "svc-token", "Authorization": f"Bearer {tok}"})
+    return c
 
 
-AUTH = {"Authorization": "Bearer test-token"}
+AUTH: dict = {}
 
 
-def test_api_requires_token(client):
+def test_api_requires_service_token_and_session(client):
     assert client.get("/api/counties").status_code == 401
-    assert client.get("/api/counties", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.get("/api/counties", headers={"X-Service-Token": "svc-token"}).status_code == 401  # no session
+    assert client.get("/api/counties", headers={**AUTH, "X-Service-Token": "wrong"}).status_code == 401
+    assert client.get("/api/counties", headers={**AUTH, "Authorization": "Bearer nope"}).status_code == 401
     assert client.get("/health").json() == {"ok": True}
 
 
-def test_api_refuses_without_configured_token(client, monkeypatch):
-    monkeypatch.setenv("ADMIN_API_TOKEN", "")
+def test_agents_cannot_use_admin_routes(client):
+    tok = client.post("/auth/login", json={"email": "agent@example.com", "password": "correct horse battery"},
+                      headers={"X-Service-Token": "svc-token"}).json()["token"]
+    h = {"X-Service-Token": "svc-token", "Authorization": f"Bearer {tok}"}
+    assert client.get("/api/counties", headers=h).status_code == 403
+    assert client.get("/api/agent/queue", headers=h).status_code == 200
+
+
+def test_login_rejects_bad_password_and_logout_ends_session(client):
+    bad = client.post("/auth/login", json={"email": "boss@example.com", "password": "wrong password!"},
+                      headers={"X-Service-Token": "svc-token"})
+    assert bad.status_code == 401
+    assert client.get("/auth/me", headers=AUTH).json()["role"] == "admin"
+    assert client.post("/auth/logout", headers=AUTH).json() == {"ok": True}
+    assert client.get("/auth/me", headers=AUTH).status_code == 401
+
+
+def test_api_refuses_without_configured_service_token(client, monkeypatch):
+    monkeypatch.setenv("SERVICE_API_TOKEN", "")
     get_settings.cache_clear()
     assert client.get("/api/counties", headers=AUTH).status_code == 503
 

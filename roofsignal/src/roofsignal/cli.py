@@ -26,8 +26,10 @@ permits_app = typer.Typer(no_args_is_help=True, help="Permit ingestion")
 storms_app = typer.Typer(no_args_is_help=True, help="Storm ingestion")
 mail_app = typer.Typer(no_args_is_help=True, help="Direct mail / door hanger campaigns")
 spend_app = typer.Typer(no_args_is_help=True, help="Paid-provider spend approvals")
+users_app = typer.Typer(no_args_is_help=True, help="Staff accounts")
+dnc_app = typer.Typer(no_args_is_help=True, help="Do-not-call / scrub lists")
 for name, sub in (("parcels", parcels_app), ("permits", permits_app), ("storms", storms_app), ("mail", mail_app),
-                  ("spend", spend_app)):
+                  ("spend", spend_app), ("users", users_app), ("dnc", dnc_app)):
     app.add_typer(sub, name=name)
 
 STORM_SOURCES = {"noaa_storm_events": NoaaStormEvents, "spc_reports": SpcReports}
@@ -191,6 +193,76 @@ def spend_approve(to: str = typer.Option(..., help="New cumulative ceiling in US
     with session_scope() as s:
         row = SpendGuard(s).approve(Decimal(to), by, note or None)
         _echo({"approved_through_usd": row.approved_through_usd})
+
+
+@users_app.command("create")
+def users_create(email: str, name: str = typer.Option(...), role: str = typer.Option("agent"),
+                 password: str = typer.Option(None, help="Omit to generate one (printed once)")) -> None:
+    """Create a staff account (admin, supervisor or agent)."""
+    import secrets
+
+    from roofsignal.core.auth import create_user
+
+    pw = password or secrets.token_urlsafe(18)
+    with session_scope() as s:
+        u = create_user(s, email, name, role, pw)
+        typer.echo(f"created {u.role} {u.email}")
+    if not password:
+        typer.echo(f"password (shown once): {pw}")
+
+
+@dnc_app.command("load")
+def dnc_load(kind: str = typer.Option(..., help="national | state | litigator"),
+             key: str = typer.Option(..., help="area code (national), state (state) or * (litigator)"),
+             file: Path = typer.Option(..., exists=True, readable=True),
+             downloaded_at: str = typer.Option(..., help="ISO time the file was downloaded, e.g. 2026-11-13T09:00-05:00")
+             ) -> None:
+    """Load a scrub list file. The gate refuses lists 31+ days old, so the download time matters."""
+    from roofsignal.callcenter.dnc_load import load_dataset
+
+    with session_scope() as s:
+        ds = load_dataset(s, kind, key, file, datetime.fromisoformat(downloaded_at))
+        _echo({"dataset": ds.id, "kind": ds.kind, "key": ds.key, "records": ds.record_count})
+
+
+@dnc_app.command("seed-mock")
+def dnc_seed_mock(area_code: list[str] = typer.Option(["631", "516", "214", "469", "972"]),
+                  state: list[str] = typer.Option(["TX"])) -> None:
+    """DEV ONLY: empty scrub lists flagged as mock. Usable only while telephony is mocked."""
+    from roofsignal.callcenter.dnc_load import seed_mock_datasets
+
+    with session_scope() as s:
+        n = len(seed_mock_datasets(s, list(area_code), list(state)))
+    typer.echo(f"seeded {n} mock datasets (the gate rejects them once real telephony is enabled)")
+
+
+@dnc_app.command("add")
+def dnc_add(phone: str, reason: str = typer.Option(...), by: str = typer.Option(...)) -> None:
+    from roofsignal.callcenter import service as cc
+
+    e164 = cc.normalize_us_phone(phone)
+    if not e164:
+        raise typer.BadParameter("invalid phone")
+    with session_scope() as s:
+        cc.add_internal_dnc(s, e164, reason, "admin", by)
+    typer.echo(f"{e164} added to the internal DNC list")
+
+
+@dnc_app.command("check")
+def dnc_check(phone: str, state: str = typer.Option(...), tz: str = typer.Option(None),
+              callback: bool = typer.Option(False, help="Evaluate as a requested callback")) -> None:
+    """Run the compliance gate for a number right now (the decision is logged like any other)."""
+    from roofsignal.callcenter import service as cc
+    from roofsignal.compliance.types import CallKind, Purpose
+
+    e164 = cc.normalize_us_phone(phone)
+    if not e164:
+        raise typer.BadParameter("invalid phone")
+    with session_scope() as s:
+        d, _ = cc.evaluate(s, e164, Purpose.DIAL, CallKind.CALLBACK_REQUESTED if callback else CallKind.OUTBOUND_COLD,
+                           state, tz, "cli")
+    _echo({"allowed": d.allowed, "block_reasons": d.block_reasons,
+           "checks": [f"{c.check}: {c.status.value} {c.reason_code} {c.detail}".strip() for c in d.checks]})
 
 
 @app.command()

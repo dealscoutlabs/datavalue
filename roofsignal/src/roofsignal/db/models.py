@@ -315,3 +315,239 @@ class IngestionRun(Base):
     status: Mapped[str] = mapped_column(String(16), default="running")
     stats: Mapped[dict] = mapped_column(JSONType, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
+
+
+# =========================================================================== Phase 2: people, consent, compliance,
+# call center. Integrity rules that matter legally are enforced by database triggers (migration 0003), not only
+# by application code: compliance_decision is append-only, consent_record can only be revoked (never edited or
+# deleted), and a queue item / outbound call cannot exist without a fresh ALLOW decision for that exact number.
+
+
+class AppUser(Base):
+    __tablename__ = "app_user"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    display_name: Mapped[str] = mapped_column(String(128))
+    role: Mapped[str] = mapped_column(String(16))  # admin | supervisor | agent
+    password_hash: Mapped[str] = mapped_column(String(255))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserSession(Base):
+    __tablename__ = "user_session"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id"), index=True)
+    token_sha256: Mapped[str] = mapped_column(String(64), unique=True)  # the raw token is never stored
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip: Mapped[str | None] = mapped_column(String(64))
+
+
+class Contact(Base):
+    __tablename__ = "contact"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    property_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("property.id"), index=True)
+    first_name: Mapped[str | None] = mapped_column(String(128))
+    last_name: Mapped[str | None] = mapped_column(String(128))
+    email: Mapped[str | None] = mapped_column(String(255))
+    address: Mapped[str | None] = mapped_column(String(255))
+    zip: Mapped[str | None] = mapped_column(String(10))
+    state: Mapped[str | None] = mapped_column(String(2))
+    source: Mapped[str] = mapped_column(String(32))  # web_form | inbound_call | agent
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PhoneNumber(Base):
+    __tablename__ = "phone_number"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    e164: Mapped[str] = mapped_column(String(16), unique=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contact.id"))
+    line_type: Mapped[str | None] = mapped_column(String(16))
+    line_type_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    line_type_source: Mapped[str | None] = mapped_column(String(32))
+    line_type_is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConsentRecord(Base):
+    __tablename__ = "consent_record"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    phone_number_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("phone_number.id"), index=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contact.id"))
+    kind: Mapped[str] = mapped_column(String(32))  # pewc | callback_request
+    disclosure_version: Mapped[str | None] = mapped_column(String(32))
+    disclosure_text: Mapped[str | None] = mapped_column(Text)  # exact text shown, copied at capture time
+    disclosure_sha256: Mapped[str | None] = mapped_column(String(64))
+    seller_names: Mapped[list[str]] = mapped_column(ARRAY(String(128)), default=list)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    captured_by: Mapped[str] = mapped_column(String(64))  # web | agent:<user id>
+    ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    page_url: Mapped[str | None] = mapped_column(Text)
+    form_payload: Mapped[dict] = mapped_column(JSONType, default=dict)
+    mail_piece_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mail_piece.id"))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revocation_channel: Mapped[str | None] = mapped_column(String(32))  # web | call | sms | email | admin
+    revocation_note: Mapped[str | None] = mapped_column(Text)
+
+
+class InternalDnc(Base):
+    __tablename__ = "internal_dnc"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    e164: Mapped[str] = mapped_column(String(16), index=True)
+    reason: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(32))  # disposition | web_optout | admin | complaint
+    added_by: Mapped[str] = mapped_column(String(64))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    removed_by: Mapped[str | None] = mapped_column(String(64))
+    removal_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class DncDataset(Base):
+    """A loaded scrub list: national DNC for one area code, a state list, or the litigator list."""
+
+    __tablename__ = "dnc_dataset"
+    __table_args__ = (Index("ix_dnc_dataset_kind_key", "kind", "key", "downloaded_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    kind: Mapped[str] = mapped_column(String(16))  # national | state | litigator
+    key: Mapped[str] = mapped_column(String(8))     # area code | state | '*'
+    name: Mapped[str] = mapped_column(String(128))
+    downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    record_count: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DncEntry(Base):
+    __tablename__ = "dnc_entry"
+
+    dataset_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("dnc_dataset.id", ondelete="CASCADE"),
+                                                  primary_key=True)
+    e164: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+
+class ComplianceDecisionRow(Base):
+    __tablename__ = "compliance_decision"
+    __table_args__ = (Index("ix_compliance_decision_e164_at", "e164", "evaluated_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    e164: Mapped[str] = mapped_column(String(16))
+    purpose: Mapped[str] = mapped_column(String(16))     # queue_insert | dial
+    call_kind: Mapped[str] = mapped_column(String(32))
+    allowed: Mapped[bool] = mapped_column(Boolean)
+    block_reasons: Mapped[list[str]] = mapped_column(ARRAY(String(64)))
+    checks: Mapped[list] = mapped_column(JSONType)
+    ruleset_version: Mapped[str] = mapped_column(String(32))
+    ruleset_hash: Mapped[str] = mapped_column(String(64))
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    recipient_timezones: Mapped[list[str]] = mapped_column(ARRAY(String(64)))
+    recipient_state: Mapped[str | None] = mapped_column(String(2))
+    next_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    allow_mock_data: Mapped[bool] = mapped_column(Boolean)
+    actor: Mapped[str] = mapped_column(String(64))
+
+
+class CallQueueItem(Base):
+    __tablename__ = "call_queue_item"
+    __table_args__ = (Index("ix_queue_ready", "status", "priority", "not_before"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    phone_number_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("phone_number.id"))
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contact.id"))
+    property_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("property.id"))
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("campaign.id"))
+    mail_piece_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mail_piece.id"))
+    queue: Mapped[str] = mapped_column(String(32))      # inbound_callback | outbound
+    call_kind: Mapped[str] = mapped_column(String(32))
+    compliance_decision_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("compliance_decision.id"))
+    recipient_state: Mapped[str | None] = mapped_column(String(2))
+    recipient_timezone: Mapped[str | None] = mapped_column(String(64))
+    priority: Mapped[int] = mapped_column(Integer, default=100)  # lower = sooner
+    not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="ready")  # ready | claimed | done | blocked | expired
+    assigned_agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+
+
+class Call(Base):
+    __tablename__ = "call"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    queue_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("call_queue_item.id"), index=True)
+    phone_number_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("phone_number.id"), index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id"))
+    direction: Mapped[str] = mapped_column(String(16))  # outbound | inbound
+    dial_decision_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("compliance_decision.id"))
+    provider: Mapped[str] = mapped_column(String(32))
+    provider_call_id: Mapped[str | None] = mapped_column(String(128))
+    provider_status: Mapped[str | None] = mapped_column(String(32))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recording_disclosed: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class Disposition(Base):
+    __tablename__ = "disposition"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    call_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("call.id"), unique=True)
+    code: Mapped[str] = mapped_column(String(32))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Qualification(Base):
+    __tablename__ = "qualification"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    call_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("call.id"), unique=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contact.id"))
+    property_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("property.id"))
+    trade: Mapped[Trade] = mapped_column(Enum(Trade, name="trade", create_type=False))
+    homeowner_confirmed: Mapped[bool] = mapped_column(Boolean)
+    roof_concern: Mapped[str] = mapped_column(String(32))
+    roof_concern_notes: Mapped[str | None] = mapped_column(Text)
+    timeline: Mapped[str] = mapped_column(String(32))
+    insurance_claim_interest: Mapped[str] = mapped_column(String(32))
+    best_appointment_window: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InboundTouch(Base):
+    __tablename__ = "inbound_touch"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("campaign.id"), index=True)
+    mail_piece_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mail_piece.id"))
+    channel: Mapped[str] = mapped_column(String(16))  # web_visit | web_form | call
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contact.id"))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    actor: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64))
+    entity: Mapped[str] = mapped_column(String(64))
+    entity_id: Mapped[str | None] = mapped_column(String(64))
+    detail: Mapped[dict] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
