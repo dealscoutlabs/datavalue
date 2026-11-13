@@ -115,7 +115,18 @@ def _owner_occupied(rec: ParcelRecord) -> bool | None:
     return site == mail and (not rec.zip or not rec.owner_mail_zip or rec.zip[:5] == rec.owner_mail_zip[:5])
 
 
+def _site_zip(rec: ParcelRecord, owner_occupied: bool | None) -> str | None:
+    """Site ZIP, falling back to the owner's mailing ZIP when the owner lives at the property (the NYS feed omits
+    LOC_ZIP on many Suffolk parcels)."""
+    if rec.zip:
+        return rec.zip[:5]
+    if owner_occupied and rec.owner_mail_zip and rec.owner_mail_zip[:5].isdigit():
+        return rec.owner_mail_zip[:5]
+    return None
+
+
 def _parcel_params(county_id, rec: ParcelRecord, source: str, version: str | None) -> dict:
+    occupied = _owner_occupied(rec)
     return {
         "county_id": county_id,
         "parcel_id": rec.parcel_id,
@@ -125,7 +136,7 @@ def _parcel_params(county_id, rec: ParcelRecord, source: str, version: str | Non
         "municipality": rec.municipality,
         "site_address": rec.site_address,
         "address_key": normalize_address(rec.site_address),
-        "zip": rec.zip,
+        "zip": _site_zip(rec, occupied),
         "property_class": rec.property_class,
         "year_built": rec.year_built,
         "owner_name": rec.owner_name,
@@ -133,7 +144,7 @@ def _parcel_params(county_id, rec: ParcelRecord, source: str, version: str | Non
         "owner_mail_city": rec.owner_mail_city,
         "owner_mail_state": rec.owner_mail_state,
         "owner_mail_zip": rec.owner_mail_zip,
-        "owner_occupied_guess": _owner_occupied(rec),
+        "owner_occupied_guess": occupied,
         "geojson": json.dumps(rec.geometry) if rec.geometry else None,
         "source": source,
         "source_version": version,

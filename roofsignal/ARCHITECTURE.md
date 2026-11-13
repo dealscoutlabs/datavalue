@@ -425,3 +425,13 @@ No LLM is used anywhere in the design.
 - **Storm sources overlap:** NOAA Storm Events and SPC often report the same event. The
   signal takes the maximum, so duplicates don't inflate scores, but evidence lists can
   show both reports.
+- **Site ZIP gaps:** the NYS feed has no `LOC_ZIP` on 59% of Suffolk parcels. Where the owner
+  lives at the property, the owner's mailing ZIP is used instead. About 89k non-owner-occupied
+  parcels still have no ZIP. Phase 3 matches contractor service areas by ZIP, so a spatial fill
+  from Census ZCTA boundaries is planned before then.
+- **Hail-belt candidate: Dallas County, TX** (desk research, not yet verified). The appraisal
+  district (DCAD) offers a free bulk appraisal roll and GIS parcels. The City of Dallas
+  publishes permits on Socrata and requires a permit for nearly every re-roof. Hail exposure is
+  top-tier. Still to verify: DCAD's terms, whether its file has year built, and the permit
+  dataset's ID and fields. Hosts needed: `www.dallascad.org`, `www.dallasopendata.com`. City
+  permits cover only the City of Dallas, about half the county. Runner-up: Denver, CO.

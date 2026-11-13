@@ -125,6 +125,9 @@ Status of each item: ☐ open · ◐ in review · ☑ confirmed by counsel (with
 - ☐ **E1. County assessor/parcel data:** terms of use for the Nassau Land
   Records Viewer and NYS parcel services. Can owner names and addresses be used
   for commercial direct mail?
+- ☐ **E1b. Texas appraisal district data** (if Dallas County is added): DCAD's bulk-file terms
+  for commercial use and direct mail. Also any Texas rules on using appraisal records for
+  solicitation.
 - ☐ **E2. Building permit data obtained by FOIL:** any limits on commercial use?
 - ☐ **E3. NOAA / SPC / MRMS data:** we understand this is US-government public
   domain; confirm attribution needs.

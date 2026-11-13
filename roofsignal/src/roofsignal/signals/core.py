@@ -173,8 +173,8 @@ def imagery_signal(result: RoofCondition | None, params: dict[str, Any]) -> Sign
         return SignalOutput("imagery", "none", 0.0, None, 0.0, ["IMAGERY_UNAVAILABLE"], {})
     codes = []
     if result.is_mock:
-        codes.append("IMAGERY_MOCK_EXCLUDED")
-    if result.condition_score >= poor:
+        codes.append("IMAGERY_MOCK_EXCLUDED")  # fake data: never emit condition codes from a mock
+    elif result.condition_score >= poor:
         codes.append("IMAGERY_POOR_CONDITION")
     elif result.condition_score >= fair:
         codes.append("IMAGERY_FAIR_CONDITION")

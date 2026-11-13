@@ -99,7 +99,9 @@ def test_future_permit_date_clamped_to_zero_age():
 def test_imagery_signal_mock_is_flagged():
     cond = MockImageryProvider().roof_condition("P1", -73.2, 40.7)
     out = imagery_signal(cond, {})
-    assert out.is_mock and "IMAGERY_MOCK_EXCLUDED" in out.reason_codes
+    assert out.is_mock and out.reason_codes == ["IMAGERY_MOCK_EXCLUDED"]
+    poor_mock = imagery_signal(RoofCondition(0.95, 0.5, None, "mock_imagery", True), {})
+    assert poor_mock.reason_codes == ["IMAGERY_MOCK_EXCLUDED"]  # no fake condition codes
     assert MockImageryProvider().roof_condition("P1", 0, 0) == cond  # deterministic
 
 

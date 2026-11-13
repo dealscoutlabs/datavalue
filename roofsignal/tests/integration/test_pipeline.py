@@ -107,10 +107,28 @@ def test_parcels_loaded_with_geometry_and_owner_occupancy(session, loaded):
     assert len(props) == 5
     assert props["P1"].owner_occupied_guess is True  # "10 Main Street" == "10 Main St"
     assert props["P5"].owner_occupied_guess is False
+
     assert session.scalar(text("SELECT count(*) FROM property WHERE centroid IS NOT NULL")) == 5
     run = session.scalar(select(IngestionRun).where(IngestionRun.kind == "parcels"))
     assert run.status == "ok" and run.stats["loaded"] == 5
 
+
+def test_site_zip_falls_back_to_mail_zip_only_when_owner_occupied(session):
+    cfg = load_county("suffolk_ny")
+    recs = [
+        ParcelRecord("Z1", site_address="5 Elm St", zip=None, owner_mail_address="5 Elm Street",
+                     owner_mail_zip="11706-1234", geometry=square(-73.3, 40.7)),
+        ParcelRecord("Z2", site_address="6 Elm St", zip=None, owner_mail_address="1 Wall St",
+                     owner_mail_zip="10005", geometry=square(-73.3, 40.71)),
+    ]
+
+    class Src(FakeParcels):
+        def iter_parcels(self, *, limit=None):
+            yield from recs
+
+    load_parcels(session, cfg, Src())
+    zips = dict(session.execute(text("SELECT parcel_id, zip FROM property")).all())
+    assert zips == {"Z1": "11706", "Z2": None}
 
 def test_parcel_reload_is_idempotent(session, loaded):
     load_parcels(session, loaded, FakeParcels())
