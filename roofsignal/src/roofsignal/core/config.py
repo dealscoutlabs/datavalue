@@ -30,6 +30,8 @@ class CountyConfig(BaseModel):
     parcels: dict[str, Any]
     jurisdictions: list[JurisdictionConfig] = Field(default_factory=list)
     storms: dict[str, Any] = Field(default_factory=dict)
+    permit_feeds: list[dict[str, Any]] = Field(default_factory=list)
+    area_code: str | None = None
     notes: str | None = None
 
 

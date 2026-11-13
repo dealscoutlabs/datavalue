@@ -23,6 +23,8 @@ class ParcelRecord:
     owner_mail_state: str | None = None
     owner_mail_zip: str | None = None
     geometry: dict[str, Any] | None = None  # GeoJSON geometry, EPSG:4326
+    owner_info_restricted: bool = False
+    attributes: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
 

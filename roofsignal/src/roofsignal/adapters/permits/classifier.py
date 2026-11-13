@@ -16,7 +16,7 @@ _RULES: list[tuple[WorkCategory, re.Pattern[str]]] = [
         WorkCategory.hvac,
         re.compile(
             r"\b(HVAC|FURNACE|BOILER|HEAT\s*PUMP|MINI[\s-]?SPLIT|CENTRAL\s+A/?C|AIR\s+CONDITION(ER|ING)|"
-            r"A/C\s+UNIT|AC\s+UNIT|CONDENSER|DUCT\s*WORK|DUCTS?)\b"
+            r"A/C\s+UNIT|AC\s+UNIT|CONDENSER|DUCT\s*WORK|DUCTS?|MECHANICAL)\b"
         ),
     ),
     (WorkCategory.driveway, re.compile(r"\b(DRIVEWAY|CURB\s+CUT|APRON)\b")),

@@ -70,6 +70,38 @@ def parcels_load(
     _echo(stats)
 
 
+@parcels_app.command("fetch")
+def parcels_fetch(county: str) -> None:
+    """Download a county's bulk parcel files (counties whose config lists `parcels.downloads`)."""
+    from roofsignal.ingestion.downloads import fetch_county_files
+
+    cfg = load_county(county)
+    for name, path in fetch_county_files(cfg).items():
+        typer.echo(f"{name}: {path}")
+
+
+@permits_app.command("fetch")
+def permits_fetch(county: str, limit: int = typer.Option(None)) -> None:
+    """Pull permits from every open-data feed in the county config and match them to parcels."""
+    from roofsignal.adapters.permits.socrata import SocrataPermits
+    from roofsignal.ingestion.loaders import load_permit_records
+
+    cfg = load_county(county)
+    if not cfg.permit_feeds:
+        raise typer.BadParameter(f"{county} has no permit_feeds; use `permits load` with a CSV")
+    out = {}
+    for feed in cfg.permit_feeds:
+        if feed.get("adapter") != "socrata":
+            raise typer.BadParameter(f"unknown permit adapter {feed.get('adapter')}")
+        src = SocrataPermits(feed["domain"], feed["dataset"], feed["columns"], feed.get("where"))
+        with session_scope() as s:
+            out[feed["jurisdiction"]] = load_permit_records(
+                s, cfg, feed["jurisdiction"], src.iter_permits(limit=limit), feed.get("kind", "city"),
+                source=f"socrata:{feed['domain']}/{feed['dataset']}",
+            )
+    _echo(out)
+
+
 @permits_app.command("load")
 def permits_load(
     county: str,
@@ -122,7 +154,7 @@ def mail_create(
     tiers: str = typer.Option("A,B"),
     limit: int = typer.Option(500),
     channel: str = typer.Option("direct_mail", help="direct_mail | door_hanger"),
-    area_code: str = typer.Option("631"),
+    area_code: str = typer.Option(None, help="Area code for a mock tracking number (default: county config)"),
     tracking_phone: str = typer.Option(None, help="Real tracking number; default allocates a mock 555 number"),
     include_non_owner_occupied: bool = False,
     out: Path = typer.Option(None, help="Write the print-vendor CSV here"),
@@ -134,7 +166,8 @@ def mail_create(
         run = latest_run(s, c)
         if run is None:
             raise typer.BadParameter("No finished scoring run for this county; run `roofsignal score` first")
-        camp = create_campaign(s, c, run, name, tiers.split(","), limit, channel, area_code, tracking_phone,
+        camp = create_campaign(s, c, run, name, tiers.split(","), limit, channel, area_code or cfg.area_code or "555",
+                               tracking_phone,
                                owner_occupied_only=not include_non_owner_occupied)
         data = export_csv(s, camp)
     if out:

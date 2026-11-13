@@ -1,0 +1,42 @@
+# Dallas County, TX: hail-belt pilot. Free data from the Dallas Central Appraisal District (DCAD) and the
+# City of Dallas open-data portal. DCAD terms: "as is" disclaimer, no stated use restriction (see COMPLIANCE.md E1b).
+key: dallas_tx
+name: Dallas County
+state: TX
+fips: "48113"
+timezone: America/Chicago
+bbox: [-97.10, 32.50, -96.45, 33.08]
+area_code: "214"
+
+parcels:
+  adapter: dcad
+  # Downloaded by `roofsignal parcels fetch dallas_tx` into .cache/downloads/dallas_tx/{roll,geom}
+  downloads:
+    roll: "https://www.dallascad.org/ViewPDFs.aspx?type=3&id=\\\\DCAD.ORG\\WEB\\WEBDATA\\WEBFORMS\\DATA%20PRODUCTS\\DCAD2026_CURRENT.ZIP"
+    geom: "https://www.dallascad.org/ViewPDFs.aspx?type=3&id=\\\\DCAD.ORG\\WEB\\WEBDATA\\WEBFORMS\\GIS%20PRODUCTS\\PARCEL_GEOM.zip"
+  sptd_codes: ["A11", "A12", "B12", "E11"]   # single-family, townhouse, duplex, ranch house
+  cities: []                                 # optional filter by city jurisdiction, e.g. ["DALLAS"]
+
+# Building permits are issued by each city. The City of Dallas publishes them (2018 onward) and requires a
+# permit for residential re-roofs; other cities (Garland, Irving, Mesquite, ...) fall back to year built.
+jurisdictions:
+  - {name: Dallas, kind: city}
+
+permit_feeds:
+  - jurisdiction: Dallas
+    kind: city
+    adapter: socrata
+    domain: www.dallasopendata.com
+    dataset: e7gq-4sah
+    columns:
+      permit_no: permit_number
+      issued_on: issued_date
+      permit_type: permit_type
+      description: work_description
+      address: street_address
+      zip: zip_code
+    where: "permit_type like 'Residential%' OR permit_type like '%Single Family%' OR permit_type like '%Duplex%'"
+
+storms:
+  sources: [noaa_storm_events, spc_reports]
+  swath_radius_m: {hail: 2000, wind: 3000}

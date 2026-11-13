@@ -131,6 +131,11 @@ class Property(TimestampMixin, Base):
     owner_mail_state: Mapped[str | None] = mapped_column(String(32))
     owner_mail_zip: Mapped[str | None] = mapped_column(String(16))
     owner_occupied_guess: Mapped[bool | None] = mapped_column(Boolean)
+    # Owner asked the appraisal district to keep their name/address confidential (e.g. Texas Tax Code 25.025:
+    # peace officers, judges, family-violence survivors). We store no owner data and never mail these homes.
+    owner_info_restricted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Building attributes from the assessor when available (roof material/type, heating, A/C, condition...).
+    attributes: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")
     geom = mapped_column(Geometry("GEOMETRY", srid=4326, spatial_index=False), nullable=True)  # polygon, or point if only a location is known
     centroid = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=True)
     source: Mapped[str] = mapped_column(String(64))

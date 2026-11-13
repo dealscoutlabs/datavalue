@@ -16,7 +16,7 @@ from roofsignal.adapters.parcels.base import ParcelRecord, ParcelSource
 from roofsignal.adapters.parcels.csv_import import CsvParcels
 from roofsignal.adapters.parcels.nys_public import NysPublicParcels
 from roofsignal.adapters.permits.classifier import classify
-from roofsignal.adapters.permits.csv_import import iter_permits
+from roofsignal.adapters.permits.csv_import import PermitRecord, iter_permits
 from roofsignal.adapters.storms.base import StormReport, StormSource
 from roofsignal.core.address import normalize_address
 from roofsignal.core.config import CountyConfig
@@ -81,6 +81,19 @@ def parcel_source_for(cfg: CountyConfig, overrides: dict[str, Any] | None = None
             path=p["path"], columns=p["columns"], lat_col=p.get("lat_col"), lon_col=p.get("lon_col"),
             residential_classes=p.get("residential_classes"),
         )
+    if adapter == "dcad":
+        from roofsignal.adapters.parcels.dcad import DcadParcels
+        from roofsignal.core.settings import get_settings
+
+        base = get_settings().data_cache_dir.parent / "downloads" / cfg.key
+        geom = p.get("geom_path")
+        if geom is None:
+            shps = sorted((base / "geom").rglob("*.shp"))
+            geom = shps[0].with_suffix("") if shps else None
+        return DcadParcels(
+            roll_dir=p.get("roll_dir") or base / "roll", geom_path=geom,
+            sptd_codes=p.get("sptd_codes"), cities=p.get("cities"),
+        )
     raise ValueError(f"Unknown parcel adapter {adapter!r} for county {cfg.key}")
 
 
@@ -88,10 +101,10 @@ _UPSERT_PARCEL = text(
     """
     INSERT INTO property (id, county_id, parcel_id, sbl, swis, town, municipality, site_address, address_key, zip,
         property_class, year_built, owner_name, owner_mail_address, owner_mail_city, owner_mail_state, owner_mail_zip,
-        owner_occupied_guess, geom, centroid, source, source_version)
+        owner_occupied_guess, owner_info_restricted, attributes, geom, centroid, source, source_version)
     SELECT gen_random_uuid(), :county_id, :parcel_id, :sbl, :swis, :town, :municipality, :site_address, :address_key,
         :zip, :property_class, :year_built, :owner_name, :owner_mail_address, :owner_mail_city, :owner_mail_state,
-        :owner_mail_zip, :owner_occupied_guess, g.geom,
+        :owner_mail_zip, :owner_occupied_guess, :owner_info_restricted, CAST(:attributes AS jsonb), g.geom,
         CASE WHEN g.geom IS NULL THEN NULL ELSE ST_PointOnSurface(g.geom) END, :source, :source_version
     FROM (SELECT CASE WHEN CAST(:geojson AS text) IS NULL THEN NULL
                       ELSE ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(CAST(:geojson AS text)), 4326)) END AS geom) g
@@ -102,6 +115,7 @@ _UPSERT_PARCEL = text(
         owner_name = EXCLUDED.owner_name, owner_mail_address = EXCLUDED.owner_mail_address,
         owner_mail_city = EXCLUDED.owner_mail_city, owner_mail_state = EXCLUDED.owner_mail_state,
         owner_mail_zip = EXCLUDED.owner_mail_zip, owner_occupied_guess = EXCLUDED.owner_occupied_guess,
+        owner_info_restricted = EXCLUDED.owner_info_restricted, attributes = EXCLUDED.attributes,
         geom = EXCLUDED.geom, centroid = EXCLUDED.centroid, source = EXCLUDED.source,
         source_version = EXCLUDED.source_version, updated_at = now()
     """
@@ -145,6 +159,8 @@ def _parcel_params(county_id, rec: ParcelRecord, source: str, version: str | Non
         "owner_mail_state": rec.owner_mail_state,
         "owner_mail_zip": rec.owner_mail_zip,
         "owner_occupied_guess": occupied,
+        "owner_info_restricted": rec.owner_info_restricted,
+        "attributes": json.dumps(rec.attributes or {}),
         "geojson": json.dumps(rec.geometry) if rec.geometry else None,
         "source": source,
         "source_version": version,
@@ -184,13 +200,36 @@ def load_parcels(
 # --------------------------------------------------------------------------- permits
 
 
+_INSERT_PERMIT = text(
+    """
+    INSERT INTO permit (id, jurisdiction_id, property_id, permit_no, issued_on, work_type_raw, work_category,
+        raw_address, raw_parcel_id, match_method, match_confidence, source)
+    VALUES (gen_random_uuid(), :j, :p, :no, :issued, :desc, :cat, :addr, :pid, :m, :conf, :source)
+    ON CONFLICT (jurisdiction_id, permit_no) DO UPDATE SET property_id = EXCLUDED.property_id,
+        issued_on = EXCLUDED.issued_on, work_type_raw = EXCLUDED.work_type_raw,
+        work_category = EXCLUDED.work_category, match_method = EXCLUDED.match_method,
+        match_confidence = EXCLUDED.match_confidence, updated_at = now()
+    """
+)
+
+
 def load_permits(
     session: Session, cfg: CountyConfig, jurisdiction_name: str, path: str | Path, columns: dict[str, str],
     jurisdiction_kind: str = "town",
 ) -> dict:
-    """Load one jurisdiction's permit file and match each permit to a parcel.
+    """Load one jurisdiction's permit CSV (FOIL response / portal export)."""
+    return load_permit_records(session, cfg, jurisdiction_name, iter_permits(path, columns), jurisdiction_kind,
+                               source="csv_import", params={"file": str(path)})
 
-    Match order: parcel id (1.0) -> normalized address + ZIP (0.9) -> address unique within that town/village (0.7).
+
+def load_permit_records(
+    session: Session, cfg: CountyConfig, jurisdiction_name: str, records: Iterable[PermitRecord],
+    jurisdiction_kind: str = "town", source: str = "csv_import", params: dict | None = None,
+    batch_size: int = 2000,
+) -> dict:
+    """Classify permits and match each to a parcel.
+
+    Match order: parcel id (1.0) -> normalized address + ZIP (0.9) -> address unique within the jurisdiction (0.7).
     """
     county = ensure_county(session, cfg)
     jur = session.scalar(
@@ -203,7 +242,7 @@ def load_permits(
         jur = Jurisdiction(county_id=county.id, name=jurisdiction_name, kind=jurisdiction_kind)
         session.add(jur)
         session.flush()
-    run = _start(session, county, "permits", "csv_import", {"jurisdiction": jurisdiction_name, "file": str(path)})
+    run = _start(session, county, "permits", source, {"jurisdiction": jurisdiction_name, **(params or {})})
 
     area_col = "municipality" if jurisdiction_kind == "village" else "town"
     rows = session.execute(
@@ -224,8 +263,13 @@ def load_permits(
             by_addr_zip[(r.address_key, r.zip)] = r.id
             by_addr.setdefault(r.address_key, []).append(r.id)
 
-    stats = {"rows": 0, "matched": 0, "roof": 0, "by_method": {}}
-    for rec in iter_permits(path, columns):
+    stats: dict[str, Any] = {"rows": 0, "matched": 0, "roof": 0, "roof_matched": 0, "by_method": {}}
+    batch: list[dict] = []
+    seen: set[str] = set()
+    for rec in records:
+        if rec.permit_no in seen:  # duplicate rows in a source file: keep the first
+            continue
+        seen.add(rec.permit_no)
         stats["rows"] += 1
         prop_id, method, conf = None, None, None
         if rec.parcel_id and rec.parcel_id.replace(" ", "").upper() in by_parcel:
@@ -237,27 +281,22 @@ def load_permits(
             elif key and len(by_addr.get(key, [])) == 1:
                 prop_id, method, conf = by_addr[key][0], "address_town", 0.7
         category = classify(rec.description)
-        stats["roof"] += category.value == "roof"
+        is_roof = category.value == "roof"
+        stats["roof"] += is_roof
         if prop_id:
             stats["matched"] += 1
+            stats["roof_matched"] += is_roof
             stats["by_method"][method] = stats["by_method"].get(method, 0) + 1
-        session.execute(
-            text(
-                """
-                INSERT INTO permit (id, jurisdiction_id, property_id, permit_no, issued_on, work_type_raw, work_category,
-                    raw_address, raw_parcel_id, match_method, match_confidence, source)
-                VALUES (gen_random_uuid(), :j, :p, :no, :issued, :desc, :cat, :addr, :pid, :m, :conf, 'csv_import')
-                ON CONFLICT (jurisdiction_id, permit_no) DO UPDATE SET property_id = EXCLUDED.property_id,
-                    issued_on = EXCLUDED.issued_on, work_type_raw = EXCLUDED.work_type_raw,
-                    work_category = EXCLUDED.work_category, match_method = EXCLUDED.match_method,
-                    match_confidence = EXCLUDED.match_confidence, updated_at = now()
-                """
-            ),
-            {
-                "j": jur.id, "p": prop_id, "no": rec.permit_no, "issued": rec.issued_on, "desc": rec.description,
-                "cat": category.value, "addr": rec.address, "pid": rec.parcel_id, "m": method, "conf": conf,
-            },
-        )
+        batch.append({
+            "j": jur.id, "p": prop_id, "no": rec.permit_no, "issued": rec.issued_on, "desc": rec.description,
+            "cat": category.value, "addr": rec.address, "pid": rec.parcel_id, "m": method, "conf": conf,
+            "source": source,
+        })
+        if len(batch) >= batch_size:
+            session.execute(_INSERT_PERMIT, batch)
+            batch.clear()
+    if batch:
+        session.execute(_INSERT_PERMIT, batch)
     jur.permit_data_status = "loaded"
     _finish(run, stats)
     session.commit()

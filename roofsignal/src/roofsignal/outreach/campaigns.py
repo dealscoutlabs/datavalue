@@ -74,6 +74,7 @@ def create_campaign(
             FROM score s JOIN property p ON p.id = s.property_id
             WHERE s.run_id = :run AND s.tier = ANY(:tiers)
               AND p.owner_mail_address IS NOT NULL
+              AND p.owner_info_restricted IS NOT TRUE
               AND (:oo = false OR p.owner_occupied_guess IS TRUE)
               AND NOT EXISTS (
                 SELECT 1 FROM mail_piece mp JOIN campaign c ON c.id = mp.campaign_id
