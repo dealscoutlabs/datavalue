@@ -1,7 +1,8 @@
 # RoofSignal — Architecture & Phased Plan
 
-**Status:** DRAFT for review. No application code exists yet. Nothing in this
-document has been built, and no paid service has been signed up for or called.
+**Status:** Phase 1 built (ingestion + scoring + mail export + admin UI). See
+§12 for decisions made after the first review. No paid service has been signed up
+for or called.
 
 RoofSignal finds homes likely to need roof work (HVAC and driveways later). It
 reaches homeowners mainly through direct mail and door hangers. Its Philippines
@@ -62,7 +63,8 @@ or warrant any work. It sells leads.
 |---|---|
 | `db` | Postgres 16 + PostGIS 3 |
 | `redis` | job queue broker |
-| `api` | FastAPI app: JSON API, server-rendered UI and landing pages |
+| `api` | FastAPI app: JSON API (Python domain logic, scoring, compliance) |
+| `web` | Next.js app: admin, agent and contractor UIs, landing pages |
 | `worker` | RQ worker for ingestion, scoring, mail batch export, lead delivery, document expiry sweeps |
 | `scheduler` | rq-scheduler for cron-style jobs (DNC refresh check, doc expiry, storm pulls) |
 | `mailpit` | local SMTP catcher. No real email leaves the machine in dev. |
@@ -70,10 +72,11 @@ or warrant any work. It sells leads.
 **Queue choice:** RQ, not Celery. The jobs are simple and idempotent, RQ needs
 less configuration, and it can be swapped out later if needed.
 
-**UI choice:** server-rendered **Jinja2 + HTMX**, not React. Agent, contractor
-and admin screens are forms and tables. Server rendering means one codebase and
-one auth model, and the pages work on low-bandwidth connections, which matters
-for remote agents. React can be added per page later if a screen needs it.
+**UI choice:** **Next.js 16 (App Router, React Server Components) + Tailwind 4**,
+matching the other apps in this repository. It lives in `web/` and talks to the
+FastAPI backend server-side only. The API token never reaches the browser. Until
+Phase 2's role-based accounts, admin pages sit behind a Basic-auth gate that is
+checked in `proxy.ts` and again in the data layer.
 
 ---
 
@@ -112,8 +115,9 @@ roofsignal/
     marketplace/   contractors, service areas, matching, assignment, delivery, disputes
     billing/       Stripe integration (test mode), refunds/credits
     dashboard/     funnel queries, materialized views
-    web/           FastAPI routers, Jinja templates, auth/RBAC
+    api/           FastAPI routers
   migrations/      Alembic
+  web/             Next.js 16 app (admin now; agents, contractors, landing pages later)
   tests/
     compliance/    near-100% branch coverage, property-based tests (hypothesis)
     fixtures/      sample parcels, permits, storm CSVs, DNC files, all synthetic or public
@@ -399,3 +403,25 @@ current. Treat them as placeholders until you get quotes.
 | Print + postage (not an API) | Direct mail | ≈ $0.45–0.90 per postcard | Your vendor |
 
 No LLM is used anywhere in the design.
+
+---
+
+## 12. Decisions after the first review (2026-11-13)
+
+- **Pilot county: Suffolk first, Nassau as target, hail-belt county next.** Nassau is not in
+  the free NYS parcel service, which publishes 38 counties. Suffolk is in it and free:
+  451,515 residential parcels, with owner name and mailing address on nearly all. Nassau
+  stays configured (`config/counties/nassau_ny.yaml`) through the CSV adapter for a FOIL
+  or licensed file. Nothing will be bought without approval. A Texas/Colorado county is
+  being researched for the next increment.
+- **Front end:** Next.js, to match the rest of this repository (see §2).
+- **Year built is sparse in Suffolk:** only about 16% of residential parcels have
+  `YR_BLT`. Until permit FOILs arrive, most Suffolk properties score `ROOF_AGE_UNKNOWN`.
+  This is a data limit, not a bug.
+- **No hail of 1" or more near Suffolk in the last 13 months.** The storm signal there is
+  thunderstorm wind only (31 qualifying reports, 58–103 mph). MRMS MESH hail swaths are
+  deferred to the hail-belt county, where they matter. Decoding GRIB2 adds a dependency
+  that is worth it only there.
+- **Storm sources overlap:** NOAA Storm Events and SPC often report the same event. The
+  signal takes the maximum, so duplicates don't inflate scores, but evidence lists can
+  show both reports.

@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Same approach as the DataValue app: neutral grounds, dark ink, one accent, tokens in @theme. */
+@theme {
+  --color-ground: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-ink: #111827;
+  --color-ink-muted: #4b5563;
+  --color-ink-subtle: #6b7280;
+  --color-line: #e5e7eb;
+  --color-line-strong: #d1d5db;
+
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-accent-soft: #eff6ff;
+
+  --color-tier-a: #166534;
+  --color-tier-a-soft: #dcfce7;
+  --color-tier-b: #1e40af;
+  --color-tier-b-soft: #dbeafe;
+  --color-tier-c: #92400e;
+  --color-tier-c-soft: #fef3c7;
+  --color-tier-d: #4b5563;
+  --color-tier-d-soft: #f3f4f6;
+
+  --color-caution: #92400e;
+  --color-caution-soft: #fffbeb;
+  --color-caution-line: #fde68a;
+
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}

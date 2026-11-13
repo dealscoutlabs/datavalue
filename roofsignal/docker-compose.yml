@@ -1,0 +1,63 @@
+# Local development. Nothing here calls a paid service: every paid provider is mocked by default.
+#   cp .env.example .env && cp web/.env.example web/.env   (fill in ADMIN_API_TOKEN / ADMIN_BASIC_*)
+#   docker compose up -d db redis mailpit
+#   docker compose run --rm api alembic upgrade head
+#   docker compose up api worker web
+name: roofsignal
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://roofsignal:roofsignal@db:5432/roofsignal
+  REDIS_URL: redis://redis:6379/0
+  DATA_CACHE_DIR: /data/cache
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: roofsignal
+      POSTGRES_PASSWORD: roofsignal
+      POSTGRES_DB: roofsignal
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roofsignal"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  mailpit:  # catches all outgoing email in dev (lead delivery arrives in Phase 3)
+    image: axllent/mailpit:v1.20
+    ports: ["8025:8025", "1025:1025"]
+
+  api:
+    build: .
+    env_file: [{path: .env, required: false}]
+    environment: *app-env
+    ports: ["8000:8000"]
+    volumes: [datacache:/data]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_started}
+
+  worker:
+    build: .
+    env_file: [{path: .env, required: false}]
+    environment: *app-env
+    command: ["rq", "worker", "--url", "redis://redis:6379/0", "roofsignal"]
+    volumes: [datacache:/data]
+    depends_on: [db, redis]
+
+  web:
+    build: ./web
+    env_file: [{path: web/.env, required: false}]
+    environment:
+      ROOFSIGNAL_API_URL: http://api:8000
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  datacache:
