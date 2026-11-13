@@ -465,3 +465,16 @@ No LLM is used anywhere in the design.
 - **Not built yet:** inbound call routing from tracking numbers (it needs a live telephony provider), SMS STOP
   handling (SMS isn't used), and Reassigned Numbers Database lookups (paid; the check exists and stays off until
   a provider is approved).
+
+## 14. Tuning after Phase 2 (2026-11-13)
+
+- **Tier A raised from 70 to 75** (`scoring.yaml` version 2026-11-13.2).
+  - A now means a strong storm on an older home: hail of 1.5" or more on a 30+ year-old home, or wind of about
+    70 mph or more. A single 1" hail report on an old home is B.
+  - Dallas A went from 79,566 to 20,413 homes; Suffolk A from 3,621 to 2,751.
+- **Dallas permit coverage:** City of Dallas permits start in 2018. They can only show that a roof is recent
+  (which pushes the home down); they can't show that a roof is old. The large suburbs (Garland, Irving,
+  Mesquite, Grand Prairie, Richardson) publish no bulk permit data, only lookup portals, which we don't scrape.
+  Next step: Texas Public Information Act requests to each city; their CSVs load with `roofsignal permits load`.
+- **Paid services:** this cloud session can't reach the owner's browser or computer. The registrations also
+  involve legal certifications and payment details that must come from the owner. See PAID_SERVICES_SETUP.md.

@@ -159,7 +159,8 @@ def test_scoring_tiers_reasons_and_transparency(session, loaded):
     run = run_scoring(session, loaded, load_scoring(), "roofing", AS_OF)
     s = scores_by_parcel(session, run)
 
-    assert s["P1"].tier == "A"
+    # 1.25" hail (38.75 pts) + 21.8-year-old roof (34.5 pts) = 73.25: tier B under the A>=75 cutoff (A needs bigger hail or an older roof)
+    assert s["P1"].tier == "B" and s["P1"].score == pytest.approx(73.25, abs=0.1)
     assert {"STORM_HAIL_12MO", "ROOF_AGE_FROM_PERMIT", "ROOF_AGE_GE_20Y"} <= set(s["P1"].reason_codes)
 
     assert "ROOF_AGE_FROM_YEAR_BUILT" in s["P2"].reason_codes  # solar permit doesn't count as a roof
@@ -275,15 +276,15 @@ def test_api_properties_and_detail(client):
     suffolk = next(c for c in counties if c["key"] == "suffolk_ny")
     assert suffolk["properties"] == 5 and suffolk["latest_run"]["stats"]["properties"] == 5
 
-    res = client.get("/api/counties/suffolk_ny/properties", params={"tier": ["A"]}, headers=AUTH).json()
-    assert res["total"] >= 1 and all(i["tier"] == "A" for i in res["items"])
+    res = client.get("/api/counties/suffolk_ny/properties", params={"tier": ["B"]}, headers=AUTH).json()
+    assert res["total"] >= 1 and all(i["tier"] == "B" for i in res["items"])
     by_reason = client.get("/api/counties/suffolk_ny/properties", params={"reason": "ROOF_PERMIT_RECENT"},
                            headers=AUTH).json()
     assert [i["parcel_id"] for i in by_reason["items"]] == ["P4"]
 
     pid = res["items"][0]["id"]
     detail = client.get(f"/api/properties/{pid}", headers=AUTH).json()
-    assert detail["score"]["tier"] == "A"
+    assert detail["score"]["tier"] == "B"
     assert {s["signal"] for s in detail["signals"]} == {"storm", "roof_age", "imagery"}
     assert detail["property"]["geometry"]["type"] == "Polygon"
     assert client.get("/api/properties/00000000-0000-0000-0000-000000000000", headers=AUTH).status_code == 404

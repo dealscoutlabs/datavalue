@@ -3,13 +3,15 @@
 #
 # score = sum over counted signals of 100 * weight * normalized * confidence / sum(weights of counted signals)
 # A signal is "counted" when enabled and not a mock (unless include_mock_signals: true, for demos only).
-version: "2026-11-13.1"
+version: "2026-11-13.2"
 
 trades:
   roofing:
     enabled: true
     include_mock_signals: false
-    tiers: {A: 70, B: 50, C: 30}   # anything below C is D
+    # A = a qualifying storm hit an older home hard enough (e.g. hail >= 1.5" on a 30+ year-old home, or
+    # >= ~70 mph wind). A single 1" hail report on an old home lands in B. Tuned 2026-11-13 on Dallas/Suffolk data.
+    tiers: {A: 75, B: 50, C: 30}   # anything below C is D
     signals:
       storm:
         weight: 0.45
