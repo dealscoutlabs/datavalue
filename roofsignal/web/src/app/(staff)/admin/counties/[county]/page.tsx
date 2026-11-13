@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Card, ReasonChip, TierBadge, fmt } from "@/components/ui";
 import { ApiError, apiJson, type PropertyList, type ReasonCodes } from "@/lib/api";
+import { requireRole } from "@/lib/session";
 
 const PAGE = 50;
 
@@ -11,6 +12,7 @@ function one(v: string | string[] | undefined) {
 }
 
 export default async function CountyProperties(props: PageProps<"/admin/counties/[county]">) {
+  await requireRole("admin", "supervisor");
   const { county } = await props.params;
   const sp = await props.searchParams;
   const tier = one(sp.tier);

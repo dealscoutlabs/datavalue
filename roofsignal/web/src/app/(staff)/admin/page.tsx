@@ -2,8 +2,10 @@ import Link from "next/link";
 
 import { Card, Notice, Stat, TierBadge, fmt } from "@/components/ui";
 import { apiJson, type CountySummary } from "@/lib/api";
+import { requireRole } from "@/lib/session";
 
 export default async function AdminHome() {
+  await requireRole("admin", "supervisor");
   const counties = await apiJson<CountySummary[]>("/api/counties");
 
   return (

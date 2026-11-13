@@ -33,7 +33,8 @@ def _trigger(storm_ev: dict | None, roof_ev: dict | None, area: str) -> tuple[st
         ev = events[0]  # most recent qualifying event
         return "storm", storm_trigger(ev["type"], date.fromisoformat(ev["date"]), area)
     if roof_ev and roof_ev.get("estimated_age_years") and roof_ev["estimated_age_years"] >= 15:
-        return "roof_age", roof_age_trigger(roof_ev["estimated_age_years"], roof_ev["source"])
+        return "roof_age", roof_age_trigger(roof_ev["estimated_age_years"], roof_ev["source"],
+                                            roof_ev.get("year_built"))
     return "generic", GENERIC_TRIGGER
 
 

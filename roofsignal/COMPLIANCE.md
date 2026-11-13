@@ -40,6 +40,16 @@ Status of each item: ☐ open · ◐ in review · ☑ confirmed by counsel (with
 - ☐ **A7. Consent lifetime.** How long does consent last before it is stale? The
   config default is 90 days for queueing and is configurable.
 
+- ☐ **A8. Draft disclosure wording is in `config/disclosures/consent_v1.txt`.** It names RoofSignal and "up to
+  one licensed roofing contractor that RoofSignal refers me to". It mentions automated technology and
+  prerecorded messages, says consent is not a condition of purchase, and gives three ways to revoke. The opt-out
+  email `optout@roofsignal.example` is a **placeholder**: it needs a real, monitored address. Any change to the
+  text creates a new version, and consent captured under an old version keeps the text it was shown.
+- ☐ **A9. Implemented revocation semantics:** a revocation by any channel (web opt-out, a DNC request on a call,
+  admin) revokes **every** earlier consent for that number. It also adds the number to the internal DNC list,
+  which blocks anything already queued. Only a new consent captured after the revocation counts. Confirm this
+  is sufficient.
+
 ## B. Outbound calling & DNC gate
 
 - ☐ **B1. Wireless numbers.** The product rule is stricter than we think the law
@@ -79,6 +89,15 @@ Status of each item: ☐ open · ◐ in review · ☑ confirmed by counsel (with
   the person called may be in an all-party consent state (e.g. FL, CA). The
   script discloses recording on every call. Confirm the wording.
 
+- ☐ **B11. A stricter-than-needed DNC override is built in.** Only prior express written consent (PEWC) can
+  override a national or state DNC listing. A verbal callback request cannot, so callers on the registry must
+  submit the web form. Counsel may confirm whether a homeowner's own inbound inquiry is enough.
+- ☐ **B12. Line-type data:** until a paid lookup provider is approved, every number counts as "unknown", which
+  the gate treats like wireless. In practice only numbers with PEWC can be called. Confirm that VoIP and unknown
+  numbers should keep wireless treatment once real data exists.
+- ☐ **B13. Call recording disclosure:** the script discloses recording on every call. Agents tick a box for
+  each call, and it's stored on the call record.
+
 ## C. Telemarketing registration & offshore call center
 
 - ☐ **C1. State telemarketer registrations/bonds.** Which states require
@@ -90,6 +109,9 @@ Status of each item: ☐ open · ◐ in review · ☑ confirmed by counsel (with
   record-keeping for 5 years under recent amendments, abandoned-call rules)?
 - ☐ **C3. Vendor contract** with the Philippines call center: who is liable, an
   indemnity, a duty to follow our gate, audit rights, training records.
+- ☐ **C5. What agents see:** phone numbers are masked in the agent UI (agents dial through the system),
+  owner names and addresses from public records are shown, and imagery-derived scores are never shown. Confirm
+  this is the right minimum for the vendor contract.
 - ☐ **C4. Cross-border data transfer.** US homeowner PII handled in the
   Philippines. Requirements under the Philippines Data Privacy Act of 2012 for
   the vendor, our duties under NY's SHIELD Act (data security, breach notice),
@@ -128,6 +150,11 @@ Status of each item: ☐ open · ◐ in review · ☑ confirmed by counsel (with
 - ☐ **E1b. Texas appraisal district data** (if Dallas County is added): DCAD's bulk-file terms
   for commercial use and direct mail. Also any Texas rules on using appraisal records for
   solicitation.
+- ☐ **E1c. Texas confidential owners:** DCAD marks some owners `EXCLUDE_OWNER` (Texas Tax Code §25.025, e.g.
+  peace officers, judges, family-violence survivors). We store no owner name or mailing address for these
+  parcels and never mail them. Confirm whether they must also be excluded from scoring entirely.
+- ☐ **E1d. Phone numbers in public records:** DCAD's roll includes a phone-number column. We deliberately do
+  not ingest it. Confirm that using it would require the same consent and scrubbing as any other number.
 - ☐ **E2. Building permit data obtained by FOIL:** any limits on commercial use?
 - ☐ **E3. NOAA / SPC / MRMS data:** we understand this is US-government public
   domain; confirm attribution needs.

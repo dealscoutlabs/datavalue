@@ -5,6 +5,8 @@ import { ApiError, apiFetch } from "@/lib/api";
 export async function GET(_req: NextRequest, ctx: RouteContext<"/admin/campaigns/[id]/export">) {
   const { id } = await ctx.params;
   try {
+    const me = await (await apiFetch("/auth/me")).json();
+    if (me.role === "agent") return new Response("Forbidden", { status: 403 });
     const res = await apiFetch(`/api/campaigns/${encodeURIComponent(id)}/export.csv`);
     return new Response(await res.text(), {
       headers: {

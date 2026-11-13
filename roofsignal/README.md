@@ -8,8 +8,9 @@ in the rest of this repository.
 - [ARCHITECTURE.md](ARCHITECTURE.md): design, data model, phased plan, paid-service estimates
 - [COMPLIANCE.md](COMPLIANCE.md): items for legal review (not legal advice)
 
-**Status:** Phase 1 done. Parcels, permits and storms are ingested, scored, exported as
-mail batches and viewable in the admin UI. Every paid provider is mocked.
+**Status:** Phases 1–2 done. Counties: Suffolk NY and Dallas TX (free data), plus Nassau NY
+through a file import. Built: ingestion, scoring, mail batches, the compliance gate, consent
+capture, and the call-center app. Every paid provider is mocked.
 
 ## Layout
 
@@ -27,8 +28,8 @@ Prerequisites: Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node 22, Post
 with PostGIS 3, and Redis. Docker Compose starts all of them:
 
 ```bash
-cp .env.example .env            # set ADMIN_API_TOKEN
-cp web/.env.example web/.env    # same ADMIN_API_TOKEN + ADMIN_BASIC_USER / ADMIN_BASIC_PASSWORD
+cp .env.example .env            # set SERVICE_API_TOKEN
+cp web/.env.example web/.env    # same SERVICE_API_TOKEN
 docker compose up -d db redis mailpit
 
 uv sync
@@ -44,9 +45,24 @@ uv run roofsignal score suffolk_ny
 uv run roofsignal mail create suffolk_ny --name islip-nov --tiers A,B --limit 500 --out islip-nov.csv
 uv run roofsignal status suffolk_ny
 
-# API + admin UI
+# Dallas County, TX (free DCAD + City of Dallas data)
+uv run roofsignal parcels fetch dallas_tx && uv run roofsignal parcels load dallas_tx
+uv run roofsignal permits fetch dallas_tx                 # City of Dallas permits (Socrata)
+uv run roofsignal storms load dallas_tx && uv run roofsignal score dallas_tx
+
+# Call center setup
+uv run roofsignal users create you@example.com --name "You" --role admin
+uv run roofsignal users create agent@example.com --name "Agent" --role agent
+uv run roofsignal dnc load --kind national --key 631 --file 631.txt --downloaded-at 2026-11-13T09:00-05:00
+uv run roofsignal dnc seed-mock            # DEV ONLY: empty mock lists (usable only while telephony is mocked)
+uv run roofsignal dnc check "(631) 555-2368" --state NY   # run the gate for one number
+
+# API + web
 uv run uvicorn roofsignal.api.main:app --port 8000
-cd web && npm install && npm run dev                      # http://localhost:3000 (Basic auth)
+cd web && npm install && npm run dev
+#   http://localhost:3000/get-estimate   homeowner form      /r/<code>  mailed landing page
+#   http://localhost:3000/login          staff sign-in       /agent     call queue
+#   /admin (counties, campaigns, compliance log)            /optout    stop calls
 ```
 
 Background jobs (`src/roofsignal/jobs/tasks.py`) run with `rq worker roofsignal`, e.g.
@@ -57,6 +73,7 @@ a daily `refresh_storms` followed by `rescore`.
 ```bash
 uv run pytest                    # integration tests need a PostGIS DB: TEST_DATABASE_URL (default roofsignal_test)
 uv run pytest --cov=roofsignal
+uv run pytest tests/compliance --cov=roofsignal.compliance --cov-branch --cov-fail-under=98   # gate coverage gate
 cd web && npm run typecheck && npm run lint
 ```
 

@@ -43,11 +43,18 @@ def storm_trigger(event_type: str, event_date: date, area_label: str) -> str:
     )
 
 
-def roof_age_trigger(age_years: float, source: str) -> str:
-    years = int(age_years // 5 * 5)  # round down to a 5-year band; never overstate precision
-    basis = "public building permit records" if source == "permit" else "public property records"
+def roof_age_trigger(age_years: float, source: str, year_built: int | None = None) -> str:
+    """Permit-based: the roof's estimated age. Year-built-based: only the build year, because an old house has
+    almost certainly had its roof replaced at least once and we must not overstate what records show."""
+    if source == "permit":
+        years = int(age_years // 5 * 5)  # round down to a 5-year band; never overstate precision
+        return assert_neutral(
+            f"Based on public building permit records, the roof on this home may be {years}+ years old. "
+            "Most asphalt roofs are designed to last about 20 to 25 years."
+        )
+    built = f"in {year_built}" if year_built else f"about {int(age_years)} years ago"
     return assert_neutral(
-        f"Based on {basis}, the roof on this home may be {years}+ years old. "
+        f"Public property records show this home was built {built}. "
         "Most asphalt roofs are designed to last about 20 to 25 years."
     )
 

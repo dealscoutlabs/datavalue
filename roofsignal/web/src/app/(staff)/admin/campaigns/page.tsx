@@ -1,7 +1,9 @@
 import { Card, fmt } from "@/components/ui";
 import { apiJson, type CampaignRow } from "@/lib/api";
+import { requireRole } from "@/lib/session";
 
 export default async function Campaigns() {
+  await requireRole("admin", "supervisor");
   const rows = await apiJson<CampaignRow[]>("/api/campaigns");
   return (
     <div className="space-y-4">

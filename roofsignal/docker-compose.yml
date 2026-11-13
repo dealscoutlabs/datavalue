@@ -1,5 +1,5 @@
 # Local development. Nothing here calls a paid service: every paid provider is mocked by default.
-#   cp .env.example .env && cp web/.env.example web/.env   (fill in ADMIN_API_TOKEN / ADMIN_BASIC_*)
+#   cp .env.example .env && cp web/.env.example web/.env   (set the same SERVICE_API_TOKEN in both)
 #   docker compose up -d db redis mailpit
 #   docker compose run --rm api alembic upgrade head
 #   docker compose up api worker web

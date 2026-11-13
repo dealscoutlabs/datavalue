@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Card, Notice, ReasonChip, TierBadge } from "@/components/ui";
 import { ApiError, apiJson, type PropertyDetail, type ReasonCodes } from "@/lib/api";
+import { requireRole } from "@/lib/session";
 
 type StormEvidence = {
   events?: { type: string; magnitude: number; date: string; source: string; source_id: string; location: string }[];
@@ -19,6 +20,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 export default async function PropertyPage(props: PageProps<"/admin/properties/[id]">) {
+  await requireRole("admin", "supervisor");
   const { id } = await props.params;
   let d: PropertyDetail;
   try {

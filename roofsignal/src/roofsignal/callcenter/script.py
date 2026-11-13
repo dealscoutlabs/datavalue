@@ -21,9 +21,12 @@ def talking_points(storm_ev: dict | None, roof_ev: dict | None) -> list[str]:
         when = date.fromisoformat(ev["date"]).strftime("%B %-d, %Y")
         points.append(f"The National Weather Service recorded {kind} in your area on {when}.")
     if roof_ev and roof_ev.get("estimated_age_years") and roof_ev["estimated_age_years"] >= 15:
-        basis = "building permit records" if roof_ev.get("source") == "permit" else "public property records"
-        years = int(roof_ev["estimated_age_years"] // 5 * 5)
-        points.append(f"Based on {basis}, the roof may be around {years} or more years old.")
+        if roof_ev.get("source") == "permit":
+            years = int(roof_ev["estimated_age_years"] // 5 * 5)
+            points.append(f"Based on building permit records, the roof may be around {years} or more years old.")
+        elif roof_ev.get("year_built"):
+            # Never turn a build year into a roof age: old homes have usually been re-roofed.
+            points.append(f"Public property records show the home was built in {roof_ev['year_built']}.")
     if not points:
         points.append("Homeowners in your area are getting free roof estimates from licensed local contractors.")
     return [assert_neutral(p) for p in points]

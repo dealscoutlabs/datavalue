@@ -1,7 +1,9 @@
 # RoofSignal — Architecture & Phased Plan
 
-**Status:** Phase 1 built (ingestion + scoring + mail export + admin UI). See
-§12 for decisions made after the first review. No paid service has been signed up
+**Status:** Phase 1 (ingestion, scoring, mail export) and Phase 2 (compliance
+gate, consent capture, call center) are built. Pilot counties: Suffolk NY and
+Dallas TX, with Nassau NY configured to load from a file. See §12 for decisions
+made after review and §13 for Phase 2 notes. No paid service has been signed up
 for or called.
 
 RoofSignal finds homes likely to need roof work (HVAC and driveways later). It
@@ -435,3 +437,31 @@ No LLM is used anywhere in the design.
   top-tier. Still to verify: DCAD's terms, whether its file has year built, and the permit
   dataset's ID and fields. Hosts needed: `www.dallascad.org`, `www.dallasopendata.com`. City
   permits cover only the City of Dallas, about half the county. Runner-up: Denver, CO.
+
+## 13. Phase 2 as built (2026-11-13)
+
+- **Gate** (`src/roofsignal/compliance`): pure Python, 10 checks, fails closed. 112 tests (including
+  property-based invariants) at 100% line and branch coverage. Rule values are in
+  `config/compliance/rules.yaml`, and each state entry is marked `legal_review: pending`.
+- **Enforced in the database** (migration 0003 triggers):
+  - `compliance_decision` and `audit_log` are append-only.
+  - `consent_record` can only be revoked, once, and never edited or deleted.
+  - A `call_queue_item` needs an ALLOW `queue_insert` decision for the same number from the last 10 minutes.
+  - An outbound `call` needs an ALLOW `dial` decision for the same number from the last 2 minutes.
+- **Mock data rule:** scrub lists and line-type results from mocks can authorize a call only while telephony is
+  mocked, so no real call can rely on fake scrub data. Real datasets always take precedence over mock ones.
+- **Auth:**
+  - The browser never talks to the API. The Next.js server holds `SERVICE_API_TOKEN` and forwards the staff
+    session (httpOnly cookie) as a bearer token.
+  - Staff passwords use argon2id. Session tokens are stored as SHA-256 only.
+  - Roles: admin, supervisor, agent.
+  - `proxy.ts` is an optimistic redirect only. Every server action and data call is authorized by the API.
+- **Agent UI:** queue → script (neutral talking points only) → Dial (gate re-check) → disposition +
+  qualification. Numbers are masked for agents.
+- **Homeowner UI:**
+  - `/r/<code>` (mailed tracking code) and `/get-estimate`: a consent form showing the exact disclosure text.
+    The server checks the text's hash and stores the full text, IP, user agent and timestamp.
+  - `/optout`.
+- **Not built yet:** inbound call routing from tracking numbers (it needs a live telephony provider), SMS STOP
+  handling (SMS isn't used), and Reassigned Numbers Database lookups (paid; the check exists and stays off until
+  a provider is approved).
