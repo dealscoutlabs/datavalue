@@ -1,0 +1,90 @@
+# Outbound calling rules used by the compliance gate (src/roofsignal/compliance).
+#
+# NOT LEGAL ADVICE. Every value below is a working assumption that a TCPA/telemarketing attorney must confirm
+# (COMPLIANCE.md section B). Entries marked legal_review: pending have NOT been confirmed. Changing this file
+# changes its hash, which is stored on every compliance decision.
+version: "2026-11-13.1"
+company_name: RoofSignal            # consent must name us to count
+
+# --- Freshness (fail closed when data is older) ---
+national_dnc_max_age_days: 31       # registry data must be < 31 days old at the time of the call
+state_dnc_max_age_days: 31
+litigator_max_age_days: 31
+line_type_max_age_days: 90          # older line-type results are treated as unknown
+
+# --- Consent ---
+consent:
+  pewc_max_age_days: 365            # prior express written consent (web form) usable for this long
+  callback_request_max_age_days: 30 # a homeowner asking us to call back
+  accepted_disclosures:             # sha256 of exact disclosure text versions we accept (config/disclosures/)
+    consent_v1: "__computed_at_load__"
+  # Which consent kinds let us call a number that is on a do-not-call list. Stricter than we believe the law is.
+  dnc_override_kinds: [pewc]
+  # Which consent kinds let us call a wireless / VoIP / unknown-type number (product rule: PEWC only).
+  wireless_kinds: [pewc]
+
+# --- Reassigned Numbers Database (FCC). Off until a provider is approved. ---
+reassigned_numbers:
+  enabled: false
+  check_if_consent_older_than_days: 30
+
+# --- Calling hours: federal default; states may narrow (local time of the recipient) ---
+federal_window: {start: "08:00", end: "21:00"}   # 47 CFR 64.1200(c)(1): not before 8am or after 9pm
+
+# Global self-imposed caps (all subjects are "home improvement leads", so one subject).
+caps:
+  max_attempts_24h: 2
+  max_attempts_7d: 5
+
+states:
+  FL:   # Florida Telephone Solicitation Act (as amended 2023)
+    legal_review: pending
+    window: {start: "08:00", end: "20:00"}
+    max_attempts_24h: 3
+    state_dnc_list: true
+  OK:   # Oklahoma Telephone Solicitation Act (2022)
+    legal_review: pending
+    window: {start: "08:00", end: "20:00"}
+    max_attempts_24h: 3
+  TX:   # Tex. Bus. & Com. Code ch. 301 / 304 (Texas no-call list)
+    legal_review: pending
+    window: {start: "09:00", end: "21:00"}
+    sunday_window: {start: "12:00", end: "21:00"}
+    state_dnc_list: true
+  NY:   # GBL 399-z
+    legal_review: pending
+    window: {start: "08:00", end: "21:00"}
+  CO:
+    legal_review: pending
+    state_dnc_list: true
+  PA:
+    legal_review: pending
+    state_dnc_list: true
+  IN:
+    legal_review: pending
+    state_dnc_list: true
+  LA:
+    legal_review: pending
+    state_dnc_list: true
+    no_sunday_calls: true
+  MA:
+    legal_review: pending
+    state_dnc_list: true
+  MO:
+    legal_review: pending
+    state_dnc_list: true
+  TN:
+    legal_review: pending
+    state_dnc_list: true
+  WY:
+    legal_review: pending
+    state_dnc_list: true
+
+# Dates (YYYY-MM-DD) on which no outbound calls are placed at all. Conservative: federal holidays.
+no_call_dates:
+  - "2026-11-26"   # Thanksgiving
+  - "2026-12-25"
+  - "2027-01-01"
+  - "2027-05-31"   # Memorial Day
+  - "2027-07-05"   # Independence Day (observed)
+  - "2027-09-06"   # Labor Day

@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "src/generated/**",
     "playwright-report/**",
     "test-results/**",
+    // RoofSignal is a separate app with its own lint config (roofsignal/web).
+    "roofsignal/**",
   ]),
 ]);
 

@@ -1,0 +1,40 @@
+# Nassau County, NY: target market. Nassau does NOT publish parcels to the free NYS service, so parcels load from a
+# file (FOIL response or licensed export) through the CSV adapter. Nothing is purchased without owner approval.
+key: nassau_ny
+name: Nassau County
+state: NY
+fips: "36059"
+timezone: America/New_York
+bbox: [-73.78, 40.54, -73.40, 40.90]
+
+parcels:
+  adapter: csv_import
+  path: data/nassau/parcels.csv      # not committed; place the file here when obtained
+  columns:
+    parcel_id: SBL
+    sbl: SBL
+    site_address: PROPERTY_ADDRESS
+    zip: ZIP
+    property_class: PROP_CLASS
+    year_built: YEAR_BUILT
+    owner_name: OWNER
+    owner_mail_address: MAIL_ADDRESS
+    owner_mail_city: MAIL_CITY
+    owner_mail_state: MAIL_STATE
+    owner_mail_zip: MAIL_ZIP
+    town: TOWN
+  lat_col: LATITUDE
+  lon_col: LONGITUDE
+  residential_classes: ["210", "215", "220", "230", "240", "241", "250", "260", "280", "281"]
+
+# Nassau permits: 3 towns, 2 cities, ~64 villages issue their own.
+jurisdictions:
+  - {name: Hempstead, kind: town}
+  - {name: North Hempstead, kind: town}
+  - {name: Oyster Bay, kind: town}
+  - {name: Glen Cove, kind: city}
+  - {name: Long Beach, kind: city}
+
+storms:
+  sources: [noaa_storm_events, spc_reports]
+  swath_radius_m: {hail: 2000, wind: 3000}

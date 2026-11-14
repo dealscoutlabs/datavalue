@@ -1,0 +1,33 @@
+# Suffolk County, NY: Phase 1 pilot (free parcel data from the NYS GIS public parcel service).
+key: suffolk_ny
+name: Suffolk County
+state: NY
+fips: "36103"
+timezone: America/New_York
+bbox: [-73.50, 40.55, -71.80, 41.32]   # min_lon, min_lat, max_lon, max_lat (includes a buffer for nearby storms)
+
+parcels:
+  adapter: nys_public_parcels
+  county_name: Suffolk
+  # NY property class codes: 210 one-family, 215 one-family w/ accessory apt, 220 two-family, 230 three-family,
+  # 240/241 rural residence, 250 estate, 260 seasonal, 280/281 multiple residences. 270 (mobile homes) excluded.
+  residential_classes: ["210", "215", "220", "230", "240", "241", "250", "260", "280", "281"]
+  towns: []   # optional filter, e.g. ["Islip"]; empty = whole county
+
+# Building permits in Suffolk are issued by the 10 towns and ~33 incorporated villages, not the county.
+# Status "none" until a FOIL response or portal export is loaded with `roofsignal permits load`.
+jurisdictions:
+  - {name: Babylon, kind: town}
+  - {name: Brookhaven, kind: town}
+  - {name: East Hampton, kind: town}
+  - {name: Huntington, kind: town}
+  - {name: Islip, kind: town}
+  - {name: Riverhead, kind: town}
+  - {name: Shelter Island, kind: town}
+  - {name: Smithtown, kind: town}
+  - {name: Southampton, kind: town}
+  - {name: Southold, kind: town}
+
+storms:
+  sources: [noaa_storm_events, spc_reports]
+  swath_radius_m: {hail: 2000, wind: 3000}   # point reports are buffered into footprints
