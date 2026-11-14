@@ -265,6 +265,23 @@ def dnc_check(phone: str, state: str = typer.Option(...), tz: str = typer.Option
            "checks": [f"{c.check}: {c.status.value} {c.reason_code} {c.detail}".strip() for c in d.checks]})
 
 
+@app.command("prune-runs")
+def prune_runs(keep: int = typer.Option(1, min=1, help="Scoring runs to keep per county and trade")) -> None:
+    """Delete old scoring runs (and their scores/signals) to shrink the database. Runs used by a campaign are kept."""
+    from sqlalchemy import text
+
+    with session_scope() as s:
+        n = s.execute(text(
+            """
+            DELETE FROM scoring_run r USING (
+              SELECT id, row_number() OVER (PARTITION BY county_id, trade ORDER BY started_at DESC) AS rn
+              FROM scoring_run) ranked
+            WHERE r.id = ranked.id AND ranked.rn > :keep
+              AND NOT EXISTS (SELECT 1 FROM campaign c WHERE c.scoring_run_id = r.id)
+            """), {"keep": keep}).rowcount
+    typer.echo(f"deleted {n} old scoring runs; run VACUUM FULL (or let autovacuum) to return disk space")
+
+
 @app.command()
 def status(county: str) -> None:
     """Show what is loaded for a county and the latest scoring run."""

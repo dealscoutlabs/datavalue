@@ -7,6 +7,8 @@ in the rest of this repository.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): design, data model, phased plan, paid-service estimates
 - [COMPLIANCE.md](COMPLIANCE.md): items for legal review (not legal advice)
+- [START_HERE.md](START_HERE.md): hand-off guide for a new session (status, run, hosting options)
+- [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md) / [PAID_SERVICES_SETUP.md](PAID_SERVICES_SETUP.md)
 
 **Status:** Phases 1–2 done. Counties: Suffolk NY and Dallas TX (free data), plus Nassau NY
 through a file import. Built: ingestion, scoring, mail batches, the compliance gate, consent

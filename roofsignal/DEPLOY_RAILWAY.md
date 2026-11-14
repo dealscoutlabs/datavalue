@@ -24,7 +24,8 @@ currently `web-production-b9a6f.up.railway.app`) with RoofSignal, then change th
 | `api` | repo above, branch above, **root directory `roofsignal`** | Builder: Dockerfile (`roofsignal/Dockerfile`). Pre-deploy command: `alembic upgrade head`. Healthcheck: `/health`. Private networking only; no public domain needed. |
 | `web` (existing) | change source to the repo above, same branch, **root directory `roofsignal/web`** | Railpack (Node 22). Build `npm run build`, start `npm run start` (binds `$PORT`). Public domain. |
 
-Redis and the RQ worker are optional for now (background refresh jobs only).
+Redis and the RQ worker are optional for now (background refresh jobs only). Leave them out to keep the cost
+down (≈ $10–25/mo trimmed, vs ≈ $30–100/mo with everything).
 
 ## Variables
 
@@ -61,6 +62,7 @@ roofsignal parcels load dallas_tx                     # ~590k parcels
 roofsignal permits fetch dallas_tx                    # City of Dallas permits
 roofsignal storms load dallas_tx --months 13
 roofsignal score dallas_tx
+roofsignal prune-runs                                 # keep only the latest scoring run (database ~3 GB)
 roofsignal users create <owner email> --name "<Owner>" --role admin      # prints a one-time password
 roofsignal dnc seed-mock                              # TEST ONLY: mock scrub lists; work only while telephony is mocked
 ```

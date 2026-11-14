@@ -59,3 +59,22 @@ def test_cli_spend(session):
     r = runner.invoke(app, ["spend", "approve", "--to", "5", "--by", "owner"])
     assert r.exit_code == 0
     assert json.loads(runner.invoke(app, ["spend", "status"]).stdout)["approved_through_usd"] == "5.0000"
+
+
+def test_prune_runs_keeps_latest_and_campaign_runs(session):
+    from roofsignal.core.config import load_scoring
+    from roofsignal.scoring.run import run_scoring
+    from sqlalchemy import text
+
+    cfg = load_county("suffolk_ny")
+    load_parcels(session, cfg, FakeParcels())
+    for _ in range(3):
+        run_scoring(session, cfg, load_scoring(), "roofing", date(2026, 1, 1))
+    r = runner.invoke(app, ["mail", "create", "suffolk_ny", "--name", "keep-me", "--tiers", "A,B,C,D"])
+    assert r.exit_code == 0
+    run_scoring(session, cfg, load_scoring(), "roofing", date(2026, 1, 1))  # newest; the campaign used the 3rd
+    session.commit()
+    r = runner.invoke(app, ["prune-runs"])
+    assert r.exit_code == 0 and "deleted 2" in r.stdout
+    assert session.scalar(text("SELECT count(*) FROM scoring_run")) == 2
+    assert session.scalar(text("SELECT count(*) FROM score WHERE run_id NOT IN (SELECT id FROM scoring_run)")) == 0
